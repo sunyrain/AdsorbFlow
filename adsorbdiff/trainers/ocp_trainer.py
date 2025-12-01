@@ -236,6 +236,11 @@ class OCPTrainer(BaseTrainer):
 
             torch.cuda.empty_cache()
 
+            self.save_epoch_checkpoint(
+                epoch_index=epoch_int,
+                disable_eval_tqdm=disable_eval_tqdm,
+            )
+
             if checkpoint_every == -1:
                 self.save(checkpoint_file="checkpoint.pt", training_state=True)
 
@@ -580,7 +585,7 @@ class OCPTrainer(BaseTrainer):
             if check_traj_files(
                 batch, self.config["task"]["relax_opt"].get("traj_dir", None)
             ):
-                logging.info(f"Skipping batch: {batch.sid.tolist()}")
+                logging.info(f"Skipping batch: {batch.sid}")
                 continue
 
             relaxed_batch = ml_relax(

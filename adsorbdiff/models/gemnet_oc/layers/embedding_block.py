@@ -27,6 +27,7 @@ class AtomEmbedding(torch.nn.Module):
         self.emb_size = emb_size
 
         self.embeddings = torch.nn.Embedding(num_elements, emb_size)
+        print("num_elements, emb_size",num_elements, emb_size)
         # init by uniform distribution
         torch.nn.init.uniform_(
             self.embeddings.weight, a=-np.sqrt(3), b=np.sqrt(3)
@@ -39,6 +40,7 @@ class AtomEmbedding(torch.nn.Module):
         h: torch.Tensor, shape=(nAtoms, emb_size)
             Atom embeddings.
         """
+        # print("Z",Z)
         h = self.embeddings(Z - 1)  # -1 because Z.min()=1 (==Hydrogen)
         return h
 

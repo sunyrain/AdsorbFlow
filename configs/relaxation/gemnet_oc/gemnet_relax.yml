@@ -1,13 +1,13 @@
 trainer: forces
 
 dataset:
-  - src: /home/jovyan/repos/ocp-modeling/data/s2ef/2M/train/
+  - src: /root/autodl-tmp/AdsorbDiff/train_allE_small
     normalize_labels: True
     target_mean: -0.7554450631141663
     target_std: 2.887317180633545
     grad_target_mean: 0.0
     grad_target_std: 2.887317180633545
-  - src: /home/jovyan/repos/ocp-modeling/data/s2ef/all/val_id/
+  - src: /root/autodl-tmp/AdsorbDiff/train_allE_small
 
 logger: wandb
 
@@ -30,6 +30,10 @@ task:
         memory: 50
         damping: 1.0
         alpha: 70.0
+        max_adsorbate_surface_dist: 3.5
+        ads_clip_scale: 0.5
+        ads_clip_attempts: 4
+        ads_clip_margin: 0.5
         traj_dir: /home/jovyan/shared-scratch/adeesh/denoising/valood_baseline/R1I0.1/
 
 model:
@@ -73,7 +77,7 @@ model:
   extensive: True
   output_init: HeOrthogonal
   activation: silu
-  scale_file: configs/relaxation/gemnet_oc/gemnet-oc.pt
+  scale_file: /root/autodl-tmp/AdsorbDiff/configs/relaxation/gemnet_oc/gemnet-oc.pt
 
   regress_forces: True
   direct_forces: True

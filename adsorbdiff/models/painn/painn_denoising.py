@@ -30,10 +30,14 @@ SOFTWARE.
 """
 
 import math
-from typing import Dict, Optional, Tuple, Union
+import logging
+import os
+import time
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch_geometric.nn import MessagePassing
 from torch_scatter import scatter, segment_coo, segment_csr
 
@@ -73,11 +77,13 @@ class PaiNN(BaseModel):
         direct_forces: bool = True,
         use_pbc: bool = True,
         otf_graph: bool = True,
-        num_elements: int = 83,
+        num_elements: int = 110,
         scale_file: Optional[str] = None,
-        so3_denoising: bool = False,
-        energy_encoding=None,
+        so3_denoising: bool = True,
+        energy_encoding="scalar",
         sampling: bool = False,
+        flow_head_activation: str = "tanh",
+        flow_head_scale: float = 5.0,
     ) -> None:
         super(PaiNN, self).__init__()
 
@@ -92,6 +98,8 @@ class PaiNN(BaseModel):
         self.use_pbc = use_pbc
         self.so3_denoising = so3_denoising
         self.sampling = sampling
+        self.flow_head_activation = str(flow_head_activation).lower()
+        self.flow_head_scale = float(flow_head_scale)
 
         # Borrowed from GemNet.
         self.symmetric_edge_symmetrization = False
@@ -116,13 +124,16 @@ class PaiNN(BaseModel):
         self.update_layers = nn.ModuleList()
 
         if energy_encoding == "scalar":
-            self.energy_embedding = torch.nn.Linear(
-                in_features=1, out_features=hidden_channels
-            )
-            self.concat_lin = nn.Sequential(
-                nn.Linear(hidden_channels, hidden_channels),
+            # FiLM-style conditioning: learn per-channel scale & shift from the energy scalar.
+            self.energy_embedding = nn.Sequential(
+                nn.Linear(1, hidden_channels),
                 ScaledSiLU(),
+                nn.Linear(hidden_channels, hidden_channels * 2),
             )
+            self.energy_null = nn.Parameter(torch.zeros(hidden_channels * 2))
+        else:
+            self.energy_embedding = None
+            self.energy_null = None
 
         for i in range(num_layers):
             self.message_layers.append(
@@ -137,35 +148,129 @@ class PaiNN(BaseModel):
             nn.Linear(hidden_channels // 2, 1),
         )
 
+        self.time_embedding = nn.Sequential(
+            nn.Linear(1, hidden_channels),
+            ScaledSiLU(),
+            nn.Linear(hidden_channels, hidden_channels),
+        )
+
         if self.regress_forces is True and self.direct_forces is True:
-            self.out_forces = PaiNNOutput(hidden_channels)
+            self.out_forces = PaiNNOutput(
+                hidden_channels,
+                activation=self.flow_head_activation,
+                activation_scale=20,
+            )
+            self.out_forces.set_active_ids_getter(lambda: self._format_active_ids())
         if self.so3_denoising:
-            self.out_forces2 = PaiNNOutput(hidden_channels)
+            self.out_forces2 = PaiNNOutput(
+                hidden_channels,
+                activation=self.flow_head_activation,
+                activation_scale=5,
+            )
+            self.out_forces2.set_active_ids_getter(lambda: self._format_active_ids())
 
         self.inv_sqrt_2 = 1 / math.sqrt(2.0)
+        self.p_cfg = 0.0
+        self._activation_hooks = []
 
         self.reset_parameters()
         load_scales_compat(self, scale_file)
+        self._register_activation_hooks()
 
     def reset_parameters(self) -> None:
         nn.init.xavier_uniform_(self.out_energy[0].weight)
         self.out_energy[0].bias.data.fill_(0)
         nn.init.xavier_uniform_(self.out_energy[2].weight)
         self.out_energy[2].bias.data.fill_(0)
+        self.time_embedding.apply(self._reset_linear_module)
+        if self.energy_embedding is not None:
+            self.energy_embedding.apply(self._reset_linear_module)
+        if self.energy_null is not None:
+            self.energy_null.data.zero_()
 
-    def tag_based_Z(self, data):
-        # This will create new embeddings for adsorbate atom types in slabs
-        an = data.atomic_numbers
-        cnho_an = [1, 6, 7, 8]
-        mask = data.tags < 2 & (
-            (an == cnho_an[0])
-            | (an == cnho_an[1])
-            | (an == cnho_an[2])
-            | (an == cnho_an[3])
+    @staticmethod
+    def _reset_linear_module(module: nn.Module) -> None:
+        if isinstance(module, nn.Linear):
+            nn.init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                module.bias.data.fill_(0)
+    
+    def _register_activation_hooks(self) -> None:
+        def make_hook(layer_type: str, layer_idx: int):
+            def _hook(module, inputs, outputs):
+                tensors = []
+                if torch.is_tensor(outputs):
+                    tensors = [outputs]
+                elif isinstance(outputs, (tuple, list)):
+                    tensors = [t for t in outputs if torch.is_tensor(t)]
+                if not tensors:
+                    return
+                for t in tensors:
+                    self._monitor_activation(f"{layer_type}[{layer_idx}]", t)
+            return _hook
+
+        for idx, layer in enumerate(self.message_layers):
+            handle = layer.register_forward_hook(make_hook("PaiNNMessage", idx))
+            self._activation_hooks.append(handle)
+        for idx, layer in enumerate(self.update_layers):
+            handle = layer.register_forward_hook(make_hook("PaiNNUpdate", idx))
+            self._activation_hooks.append(handle)
+        for idx, layer in enumerate(self.out_forces.output_network):
+            handle = layer.register_forward_hook(make_hook("PaiNNOutput", idx))
+            self._activation_hooks.append(handle)
+        if self.so3_denoising and hasattr(self, "out_forces2"):
+            for idx, layer in enumerate(self.out_forces2.output_network):
+                handle = layer.register_forward_hook(make_hook("PaiNNOutput2", idx))
+                self._activation_hooks.append(handle)
+
+    def _monitor_activation(self, label: str, tensor: torch.Tensor) -> None:
+        if not torch.is_tensor(tensor) or tensor.numel() == 0:
+            return
+        data = tensor.detach()
+        finite = torch.isfinite(data)
+        finite_ratio = float(finite.float().mean().item())
+        if finite.any():
+            min_val = float(data[finite].min().item())
+            max_val = float(data[finite].max().item())
+        else:
+            min_val = float("nan")
+            max_val = float("nan")
+        logging.debug(
+            "[activation] %s shape=%s finite_ratio=%.3f min=%.4e max=%.4e",
+            label,
+            tuple(data.shape),
+            finite_ratio,
+            min_val,
+            max_val,
         )
-        an[mask] += 100
-        data.atomic_numbers = an
-        return data
+        if not torch.all(finite):
+            ids = self._format_active_ids()
+            logging.error(
+                "[activation] non-finite detected at %s ids=%s",
+                label,
+                ids,
+            )
+           # raise RuntimeError(f"Non-finite activation detected at {label} ids={ids}")
+
+    def _format_active_ids(self) -> str:
+        info = getattr(self, "_active_batch_debug", None)
+        if not isinstance(info, dict):
+            return "n/a"
+        ids = info.get("ids")
+        if isinstance(ids, dict):
+            parts = []
+            for key, val in ids.items():
+                parts.append(f"{key}={val}")
+            return ",".join(parts)
+        return str(info)
+
+    def tag_based_Z(self, data) -> torch.Tensor:
+        an = data.atomic_numbers  
+        cnho = (an == 1) | (an == 6) | (an == 7) | (an == 8)
+        mask = (data.tags < 2) & cnho
+        an_mod = an.clone()
+        an_mod[mask] += 100
+        return an_mod 
 
     # Borrowed from GemNet.
     def select_symmetric_edges(
@@ -400,12 +505,10 @@ class PaiNN(BaseModel):
         )
 
     @conditional_grad(torch.enable_grad())
-    def forward(self, data):
+    def forward(self, data, mode: Optional[str] = None):
         pos = data.pos
         batch = data.batch
-        data = self.tag_based_Z(data)
-
-        z = data.atomic_numbers.long()
+        z = self.tag_based_Z(data).long()
 
         if self.regress_forces and not self.direct_forces:
             pos = pos.requires_grad_(True)
@@ -425,13 +528,42 @@ class PaiNN(BaseModel):
         x = self.atom_emb(z)
         vec = torch.zeros(x.size(0), 3, x.size(1), device=x.device)
 
-        if hasattr(self, "energy_embedding"):
-            if not self.sampling:
-                node_wise_y = data.energy[data.batch].unsqueeze(-1)
+        if self.energy_embedding is not None:
+            batch_idx = data.batch
+            if hasattr(data, "natoms") and data.natoms is not None:
+                batch_size = int(data.natoms.shape[0])
             else:
-                node_wise_y = torch.zeros_like(data.batch).unsqueeze(-1)
+                batch_size = int(batch_idx.max().item()) + 1
 
-            energy_embedding = self.energy_embedding(node_wise_y.float())
+            if hasattr(data, "energy") and data.energy is not None:
+                node_energy = data.energy[batch_idx].unsqueeze(-1)
+            else:
+                node_energy = torch.zeros(batch_idx.size(0), 1, device=x.device)
+
+            energy_cond = self.energy_embedding(node_energy.float()).to(x.dtype)
+            cfg_conditioned = getattr(data, "cfg_conditioned", None)
+            if cfg_conditioned is not None:
+                if cfg_conditioned.numel() != batch_size:
+                    raise ValueError("cfg_conditioned must have one flag per sample.")
+                sample_mask = cfg_conditioned.to(device=x.device)
+                node_mask = sample_mask[batch_idx].to(torch.bool)
+            elif self.training and self.p_cfg > 0.0:
+                keep_sample = torch.rand(batch_size, device=x.device) >= self.p_cfg
+                node_mask = keep_sample[batch_idx]
+            else:
+                node_mask = torch.ones(batch_idx.size(0), dtype=torch.bool, device=x.device)
+
+            null_vec = self.energy_null.view(1, -1).to(device=x.device, dtype=x.dtype).expand_as(energy_cond)
+            emb = torch.where(node_mask.unsqueeze(-1), energy_cond, null_vec)
+            gamma, beta = torch.chunk(emb, 2, dim=-1)
+            x = x * (1 + gamma) + beta
+
+        if hasattr(data, "t") and data.t is not None:
+            t_val = data.t
+            if t_val.dim() == 1:
+                t_val = t_val.unsqueeze(-1)
+            t_nodes = t_val[data.batch].to(x.dtype)
+            x = x + self.time_embedding(t_nodes.float())
 
         #### Interaction blocks ###############################################
 
@@ -473,12 +605,136 @@ class PaiNN(BaseModel):
         # else:
         #     return energy
 
+        flow_context = self._build_flow_context(data)
+        if hasattr(self, "out_forces") and self.out_forces is not None:
+            self.out_forces.set_flow_context_fetcher(lambda ctx=flow_context: ctx)
+        if self.so3_denoising and hasattr(self, "out_forces2") and self.out_forces2 is not None:
+            self.out_forces2.set_flow_context_fetcher(lambda ctx=flow_context: ctx)
+
         forces = self.out_forces(x, vec)
+        forces2 = self.out_forces2(x, vec) if self.so3_denoising else None
+
+        if mode == "fm":
+            return self._forward_flow(data, forces, forces2)
+
         if not self.so3_denoising:
             return forces
+        return forces, forces2
+
+    def _build_flow_context(self, batch) -> Dict[str, Any]:
+        context: Dict[str, Any] = {}
+        flow_debug = getattr(batch, "_flow_debug", None)
+        if flow_debug:
+            context["flow_debug"] = flow_debug
+        v_tr_target = getattr(batch, "v_tr_target", None)
+        if torch.is_tensor(v_tr_target):
+            context["v_tr_target"] = v_tr_target.detach().cpu()
+        v_rot_target = getattr(batch, "v_rot_target", None)
+        if torch.is_tensor(v_rot_target):
+            context["v_rot_target"] = v_rot_target.detach().cpu()
+        t_val = getattr(batch, "t", None)
+        if torch.is_tensor(t_val):
+            context["t"] = t_val.detach().cpu()
+        if hasattr(batch, "rot_symmetry"):
+            context["rot_symmetry"] = list(getattr(batch, "rot_symmetry"))
+        if hasattr(batch, "sid"):
+            context["sid"] = batch.sid
+        if hasattr(batch, "fid"):
+            context["fid"] = batch.fid
+        return context
+
+    def _forward_flow(self, data, forces: torch.Tensor, forces2: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
+        """Project per-atom outputs to the rigid body (translation/rotation) flow heads."""
+        if not hasattr(data, "batch") or not hasattr(data, "tags"):
+            raise ValueError("Flow matching mode expects 'batch' and 'tags' attributes on the input data.")
+
+        batch_idx = data.batch
+        tags = data.tags
+        ads_mask = tags == 2
+        if not torch.any(ads_mask) and tags.dtype == torch.bool:
+            ads_mask = tags
+
+        if not torch.any(ads_mask):
+            raise RuntimeError("No adsorbate atoms (tag==2) found; cannot form flow outputs.")
+
+        if hasattr(data, "natoms"):
+            batch_size = int(data.natoms.shape[0])
         else:
-            forces2 = self.out_forces2(x, vec)
-            return forces, forces2
+            batch_size = int(batch_idx.max().item()) + 1
+
+        ads_forces = forces[ads_mask]
+        force_stats: Dict[str, Union[float, bool, torch.Tensor]] = {}
+        if ads_forces.numel() > 0:
+            flat = ads_forces.detach()
+            finite = torch.isfinite(flat)
+            force_stats["has_nonfinite"] = not bool(torch.all(finite).item())
+            if torch.any(finite):
+                finite_vals = torch.abs(flat[finite])
+                force_stats["global_max_abs"] = float(finite_vals.max().item())
+            else:
+                force_stats["global_max_abs"] = float("nan")
+            per_atom_max = torch.abs(flat)
+            per_atom_max = torch.nan_to_num(per_atom_max, nan=0.0, posinf=0.0, neginf=0.0)
+            per_atom_max = per_atom_max.amax(dim=-1)
+            per_sample_max = scatter(
+                per_atom_max,
+                batch_idx[ads_mask],
+                dim=0,
+                dim_size=batch_size,
+                reduce="max",
+            )
+            force_stats["per_sample_max_abs"] = per_sample_max.detach().cpu()
+
+        # === 1. Translation 部分 (保持不变: 平均线速度 = 质心速度) ===
+        # Translation is a polar vector, mean pooling is correct for rigid translation
+        translation = scatter(
+            ads_forces,
+            batch_idx[ads_mask],
+            dim=0,
+            dim_size=batch_size,
+            reduce="mean",
+        )
+        translation = translation.clone()
+        # Unlock Z-axis to allow vertical relaxation
+        # if translation.size(-1) >= 3:
+        #     translation[:, 2] = 0.0
+
+        # === 2. Rotation 部分 (关键修改: 引入叉积聚合以匹配轴矢量宇称) ===
+        if forces2 is not None:
+            ads_forces2 = forces2[ads_mask]
+            
+            # (A) 计算吸附剂中心 (Center of Geometry/Mass)
+            ads_pos = data.pos[ads_mask]
+            ads_batch = batch_idx[ads_mask]
+            centers = scatter(ads_pos, ads_batch, dim=0, dim_size=batch_size, reduce="mean")
+            
+            # (B) 计算相对坐标 r (relative position)
+            # centers[ads_batch] 将中心坐标广播回每个原子
+            rel_pos = ads_pos - centers[ads_batch]
+
+            # (C) 计算"力矩"项: r x v
+            # PaiNN 输出的是极矢量(类似切向速度)，通过叉积转换为轴矢量(旋转轴)
+            # 这样可以解决"刚体旋转的平均线速度为0"的问题，同时匹配宇称(Polar x Polar = Axial)
+            torque_like = torch.cross(rel_pos, ads_forces2, dim=-1)
+            
+            # (D) 聚合得到全局旋转量
+            rotation = scatter(torque_like, ads_batch, dim=0, dim_size=batch_size, reduce="mean")
+        else:
+            rotation = torch.zeros(
+                batch_size,
+                3,
+                device=translation.device,
+                dtype=translation.dtype,
+            )
+
+        # === 3. 组装输出 ===
+        outputs: Dict[str, torch.Tensor] = {
+            "v_tr": translation,
+            "v_rot": rotation,
+        }
+        if force_stats:
+            outputs["_debug_force_pre_scatter"] = force_stats
+        return outputs
 
     @property
     def num_params(self) -> int:
@@ -504,6 +760,7 @@ class PaiNNMessage(MessagePassing):
         super(PaiNNMessage, self).__init__(aggr="add", node_dim=0)
 
         self.hidden_channels = hidden_channels
+        self.nan_clip = 1.0e6
 
         self.x_proj = nn.Sequential(
             nn.Linear(hidden_channels, hidden_channels),
@@ -532,6 +789,11 @@ class PaiNNMessage(MessagePassing):
 
         # TODO(@abhshkdz): Nans out with AMP here during backprop. Debug / fix.
         rbfh = self.rbf_proj(edge_rbf)
+        rbfh = self._sanitize_tensor(
+            rbfh,
+            "PaiNNMessage.rbf_proj",
+            extra_info=self._edge_info(edge_vector, edge_rbf),
+        )
 
         # propagate_type: (xh: Tensor, vec: Tensor, rbfh_ij: Tensor, r_ij: Tensor)
         dx, dvec = self.propagate(
@@ -571,11 +833,37 @@ class PaiNNMessage(MessagePassing):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         return inputs
 
+    def _sanitize_tensor(self, tensor: torch.Tensor, label: str, extra_info: str = "") -> torch.Tensor:
+        if torch.isfinite(tensor).all():
+            return tensor
+        logging.warning(
+            "[PaiNNMessage] non-finite tensor detected in %s %s",
+            label,
+            extra_info,
+        )
+        tensor = torch.nan_to_num(tensor, nan=0.0, posinf=self.nan_clip, neginf=-self.nan_clip)
+        tensor = torch.clamp(tensor, min=-self.nan_clip, max=self.nan_clip)
+        return tensor
+
+    def _edge_info(self, edge_vector: torch.Tensor, edge_rbf: torch.Tensor) -> str:
+        try:
+            edge_norm = torch.linalg.norm(edge_vector.detach(), dim=-1)
+            edge_str = f"edge_norm[min={edge_norm.min().item():.4e}, max={edge_norm.max().item():.4e}]"
+        except Exception:
+            edge_str = "edge_norm=n/a"
+        try:
+            rbf_norm = torch.linalg.norm(edge_rbf.detach(), dim=-1)
+            rbf_str = f"rbf_norm[min={rbf_norm.min().item():.4e}, max={rbf_norm.max().item():.4e}]"
+        except Exception:
+            rbf_str = "rbf_norm=n/a"
+        return f"{edge_str} {rbf_str}"
+
 
 class PaiNNUpdate(nn.Module):
     def __init__(self, hidden_channels) -> None:
         super().__init__()
         self.hidden_channels = hidden_channels
+        self.nan_clip = 1.0e6
 
         self.vec_proj = nn.Linear(
             hidden_channels, hidden_channels * 2, bias=False
@@ -602,13 +890,26 @@ class PaiNNUpdate(nn.Module):
         vec1, vec2 = torch.split(
             self.vec_proj(vec), self.hidden_channels, dim=-1
         )
+        vec1 = self._sanitize_tensor(vec1, "PaiNNUpdate.vec1")
+        vec2 = self._sanitize_tensor(
+            vec2,
+            "PaiNNUpdate.vec2",
+            extra_info=self._vec2_info(vec2),
+        )
         vec_dot = (vec1 * vec2).sum(dim=1) * self.inv_sqrt_h
+
+        norm_arg = torch.sum(vec2**2, dim=-2)
+        if torch.any(~torch.isfinite(norm_arg)):
+            logging.warning("[PaiNNUpdate] non-finite norm_arg detected")
+        norm_arg = torch.nan_to_num(norm_arg, nan=0.0, posinf=self.nan_clip**2, neginf=0.0)
+        norm_arg = torch.clamp(norm_arg, min=0.0, max=self.nan_clip**2)
 
         # NOTE: Can't use torch.norm because the gradient is NaN for input = 0.
         # Add an epsilon offset to make sure sqrt is always positive.
+        sqrt_term = torch.sqrt(norm_arg + 1e-8)
         x_vec_h = self.xvec_proj(
             torch.cat(
-                [x, torch.sqrt(torch.sum(vec2**2, dim=-2) + 1e-8)], dim=-1
+                [x, sqrt_term], dim=-1
             )
         )
         xvec1, xvec2, xvec3 = torch.split(
@@ -619,14 +920,35 @@ class PaiNNUpdate(nn.Module):
         dx = dx * self.inv_sqrt_2
 
         dvec = xvec3.unsqueeze(1) * vec1
+        
+        return dx, dvec
+
+    def _sanitize_tensor(self, tensor: torch.Tensor, label: str, extra_info: str = "") -> torch.Tensor:
+        if torch.isfinite(tensor).all():
+            return tensor
+        logging.warning("[PaiNNUpdate] non-finite tensor detected in %s %s", label, extra_info)
+        tensor = torch.nan_to_num(tensor, nan=0.0, posinf=self.nan_clip, neginf=-self.nan_clip)
+        tensor = torch.clamp(tensor, min=-self.nan_clip, max=self.nan_clip)
+        return tensor
+
+    def _vec2_info(self, vec2: torch.Tensor) -> str:
+        try:
+            vec2_norm = torch.linalg.norm(vec2.detach(), dim=-2)
+            return f"vec2_norm[min={vec2_norm.min().item():.4e}, max={vec2_norm.max().item():.4e}]"
+        except Exception:
+            return "vec2_norm=n/a"
 
         return dx, dvec
 
 
 class PaiNNOutput(nn.Module):
-    def __init__(self, hidden_channels) -> None:
+    def __init__(self, hidden_channels, activation: str = "identity", activation_scale: float = 1.0) -> None:
         super().__init__()
         self.hidden_channels = hidden_channels
+        self.activation = str(activation).lower()
+        self.activation_scale = float(activation_scale)
+        self._active_ids_getter: Optional[Callable[[], str]] = None
+        self._flow_context_fetcher: Optional[Callable[[], Dict[str, Any]]] = None
 
         self.output_network = nn.ModuleList(
             [
@@ -644,10 +966,35 @@ class PaiNNOutput(nn.Module):
         for layer in self.output_network:
             layer.reset_parameters()
 
-    def forward(self, x, vec):
+    def set_active_ids_getter(self, getter: Optional[Callable[[], str]]) -> None:
+        self._active_ids_getter = getter
         for layer in self.output_network:
-            x, vec = layer(x, vec)
-        return vec.squeeze()
+            if hasattr(layer, "set_active_ids_getter"):
+                layer.set_active_ids_getter(getter)
+
+    def set_flow_context_fetcher(self, getter: Optional[Callable[[], Dict[str, Any]]]) -> None:
+        self._flow_context_fetcher = getter
+        for layer in self.output_network:
+            if hasattr(layer, "set_flow_context_fetcher"):
+                layer.set_flow_context_fetcher(getter)
+
+    def forward(self, x, vec):
+        orig_dtype = vec.dtype
+        with torch.cuda.amp.autocast(enabled=False):
+            x_fp32 = x.to(torch.float32)
+            vec_fp32 = vec.to(torch.float32)
+            for layer in self.output_network:
+                x_fp32, vec_fp32 = layer(x_fp32, vec_fp32)
+            out = vec_fp32.squeeze()
+            out = out.to(orig_dtype)
+
+        if self.activation == "tanh":
+            out = torch.tanh(out)
+        elif self.activation not in {"", "identity", None}:
+            out = torch.tanh(out)
+
+        out = out * self.activation_scale
+        return out
 
 
 # Borrowed from TorchMD-Net
@@ -656,6 +1003,16 @@ class GatedEquivariantBlock(nn.Module):
     Equivariant message passing for the prediction of tensorial properties and molecular spectra
     """
 
+    _instance_counter = 0
+    _instances: List["GatedEquivariantBlock"] = []
+    _debug_enabled = bool(int(os.getenv("PAINN_GEBLOCK_DEBUG", "0")))
+    _norm_warn_limit = float(os.getenv("PAINN_GEBLOCK_NORM_LIMIT", "1.0e3"))
+    _dump_dir = os.getenv("PAINN_GEBLOCK_DUMP_DIR", "/root/autodl-tmp/AdsorbDiff/pt")
+    _topk = max(int(os.getenv("PAINN_GEBLOCK_TOPK", "3")), 0)
+    _trace_full = bool(int(os.getenv("PAINN_GEBLOCK_TRACE_ALL", "1")))
+    _peer_trace_limit = max(int(os.getenv("PAINN_GEBLOCK_PEER_LIMIT", "2")), 0)
+    _dump_enabled = bool(int(os.getenv("PAINN_GEBLOCK_ENABLE_DUMP", "0")))
+
     def __init__(
         self,
         hidden_channels,
@@ -663,6 +1020,15 @@ class GatedEquivariantBlock(nn.Module):
     ) -> None:
         super(GatedEquivariantBlock, self).__init__()
         self.out_channels = out_channels
+        self._debug_id = GatedEquivariantBlock._instance_counter
+        GatedEquivariantBlock._instance_counter += 1
+        GatedEquivariantBlock._instances.append(self)
+        self._last_inputs: Optional[Dict[str, torch.Tensor]] = None
+        self._trace_cache: Dict[str, torch.Tensor] = {}
+        self._trace_dumped = False
+        self._active_ids_getter: Optional[Callable[[], str]] = None
+        self._flow_context_fetcher: Optional[Callable[[], Dict[str, Any]]] = None
+        self._internal_clip = float(os.getenv("PAINN_GEBLOCK_INTERNAL_CLIP", "0.0"))
 
         self.vec1_proj = nn.Linear(
             hidden_channels, hidden_channels, bias=False
@@ -685,16 +1051,302 @@ class GatedEquivariantBlock(nn.Module):
         nn.init.xavier_uniform_(self.update_net[2].weight)
         self.update_net[2].bias.data.fill_(0)
 
-    def forward(self, x, v):
-        vec1 = torch.norm(self.vec1_proj(v), dim=-2)
-        vec2 = self.vec2_proj(v)
+    def _log_tensor_state(self, label: str, tensor: torch.Tensor) -> None:
+        if not self._debug_enabled:
+            return
+        if tensor is None or not torch.is_tensor(tensor):
+            logging.warning("[geblock][%d] %s unavailable ids=%s", self._debug_id, label, self._format_active_ids())
+            return
+        with torch.no_grad():
+            data = tensor.detach().float()
+            if data.device.type != "cpu":
+                data = data.to("cpu")
+            if data.numel() == 0:
+                logging.warning(
+                    "[geblock][%d] %s empty tensor ids=%s",
+                    self._debug_id,
+                    label,
+                    self._format_active_ids(),
+                )
+                return
+            self._cache_trace(label, data)
+            finite_mask = torch.isfinite(data)
+            abs_data = data.abs()
+            max_abs = float(abs_data.max().item())
 
-        x = torch.cat([x, vec1], dim=-1)
-        x, v = torch.split(self.update_net(x), self.out_channels, dim=-1)
-        v = v.unsqueeze(1) * vec2
+            sample_info = ""
+            if data.dim() >= 1:
+                sample_dim = data.shape[0]
+                reshaped = abs_data.view(sample_dim, -1)
+                sample_max, sample_argmax = reshaped.max(dim=1)
+                topk = min(self._topk, sample_max.numel()) if sample_max.numel() > 0 else 0
+                if topk > 0:
+                    vals, idx = torch.topk(sample_max, k=topk)
+                    entries = []
+                    for rank in range(topk):
+                        sid = int(idx[rank])
+                        entries.append(
+                            f"sample={sid} max={float(vals[rank]):.3e} flat_idx={int(sample_argmax[sid])}"
+                        )
+                    sample_info = " | ".join(entries)
+
+            if not finite_mask.all():
+                bad_vals = data[~finite_mask]
+                preview = bad_vals.view(-1)[:5].tolist()
+                logging.warning(
+                    "[geblock][%d] %s non-finite detected preview=%s shape=%s %s ids=%s",
+                    self._debug_id,
+                    label,
+                    preview,
+                    tuple(data.shape),
+                    sample_info,
+                    self._format_active_ids(),
+                )
+                self._dump_tensor_snapshot(label, data, finite_mask)
+                self._dump_trace_snapshot(label, "nonfinite")
+                return
+
+            if max_abs > self._norm_warn_limit:
+                logging.warning(
+                    "[geblock][%d] %s large magnitude max=%.4e limit=%.4e %s ids=%s",
+                    self._debug_id,
+                    label,
+                    max_abs,
+                    self._norm_warn_limit,
+                    sample_info,
+                    self._format_active_ids(),
+                )
+                self._dump_tensor_snapshot(label, data)
+                self._dump_trace_snapshot(label, "overflow")
+
+    def _dump_tensor_snapshot(
+        self,
+        label: str,
+        data: torch.Tensor,
+        finite_mask: Optional[torch.Tensor] = None,
+    ) -> None:
+        if not (self._debug_enabled and self._dump_enabled):
+            return
+        dump_dir = self._dump_dir or "/tmp"
+        timestamp = int(time.time() * 1000)
+        filename = f"geb_{self._debug_id}_{label}_{timestamp}.pt"
+        path = os.path.join(dump_dir, filename)
+        payload: Dict[str, Optional[torch.Tensor]] = {
+            "label": label,
+            "tensor": data.clone(),
+            "finite_mask": finite_mask.clone() if torch.is_tensor(finite_mask) else None,
+            "active_ids": self._format_active_ids(),
+            "flow_context": self._format_flow_context(),
+        }
+        if isinstance(self._last_inputs, dict):
+            x_in = self._last_inputs.get("x")
+            v_in = self._last_inputs.get("v")
+            if torch.is_tensor(x_in):
+                payload["input_scalar"] = x_in.clone()
+            if torch.is_tensor(v_in):
+                payload["input_vec"] = v_in.clone()
+        try:
+            os.makedirs(dump_dir, exist_ok=True)
+            torch.save(payload, path)
+            logging.warning(
+                "[geblock][%d] dumped %s snapshot to %s ids=%s",
+                self._debug_id,
+                label,
+                path,
+                self._format_active_ids(),
+            )
+        except Exception as exc:
+            logging.warning(
+                "[geblock][%d] failed to dump %s snapshot: %s",
+                self._debug_id,
+                label,
+                exc,
+            )
+
+    def _cache_trace(self, label: str, data: torch.Tensor) -> None:
+        if not (self._debug_enabled and self._dump_enabled and self._trace_full and not self._trace_dumped):
+            return
+        try:
+            self._trace_cache[label] = data.clone()
+        except Exception:
+            pass
+
+    def _dump_trace_snapshot(self, trigger_label: str, reason: str) -> None:
+        if not (self._debug_enabled and self._dump_enabled and self._trace_full) or self._trace_dumped:
+            return
+        dump_dir = self._dump_dir or "/tmp"
+        timestamp = int(time.time() * 1000)
+        filename = f"geb_{self._debug_id}_trace_{timestamp}.pt"
+        path = os.path.join(dump_dir, filename)
+        payload: Dict[str, Optional[torch.Tensor]] = {
+            "trigger_label": trigger_label,
+            "reason": reason,
+            "trace": {k: v.clone() for k, v in self._trace_cache.items()},
+            "input_scalar": None,
+            "input_vec": None,
+            "active_ids": self._format_active_ids(),
+            "flow_context": self._format_flow_context(),
+            "peer_traces": self._collect_peer_traces(),
+        }
+        if isinstance(self._last_inputs, dict):
+            x_in = self._last_inputs.get("x")
+            v_in = self._last_inputs.get("v")
+            if torch.is_tensor(x_in):
+                payload["input_scalar"] = x_in.clone()
+            if torch.is_tensor(v_in):
+                payload["input_vec"] = v_in.clone()
+        try:
+            os.makedirs(dump_dir, exist_ok=True)
+            torch.save(payload, path)
+            logging.warning(
+                "[geblock][%d] dumped full trace (trigger=%s) to %s ids=%s",
+                self._debug_id,
+                trigger_label,
+                path,
+                self._format_active_ids(),
+            )
+        except Exception as exc:
+            logging.warning(
+                "[geblock][%d] failed to dump full trace for %s: %s",
+                self._debug_id,
+                trigger_label,
+                exc,
+            )
+        finally:
+            self._trace_dumped = True
+
+    def set_active_ids_getter(self, getter: Optional[Callable[[], str]]) -> None:
+        self._active_ids_getter = getter
+
+    def _format_active_ids(self) -> str:
+        if callable(self._active_ids_getter):
+            try:
+                result = self._active_ids_getter()
+                if isinstance(result, str):
+                    return result
+                return str(result)
+            except Exception:
+                return "unavailable"
+        return "n/a"
+
+    def set_flow_context_fetcher(self, getter: Optional[Callable[[], Dict[str, Any]]]) -> None:
+        self._flow_context_fetcher = getter
+
+    def _format_flow_context(self) -> Optional[Dict[str, Any]]:
+        if not callable(self._flow_context_fetcher):
+            return None
+        try:
+            ctx = self._flow_context_fetcher()
+        except Exception:
+            return None
+        if not isinstance(ctx, dict):
+            return None
+        subset: Dict[str, Any] = {}
+        for key in (
+            "flow_debug",
+            "v_tr_target",
+            "v_rot_target",
+            "t",
+            "rot_symmetry",
+            "sid",
+            "fid",
+        ):
+            if key in ctx:
+                subset[key] = ctx[key]
+        return subset if subset else None
+
+    def _clone_inputs(self) -> Optional[Dict[str, torch.Tensor]]:
+        if not isinstance(self._last_inputs, dict):
+            return None
+        cloned: Dict[str, torch.Tensor] = {}
+        for key, tensor in self._last_inputs.items():
+            if torch.is_tensor(tensor):
+                try:
+                    cloned[key] = tensor.clone()
+                except Exception:
+                    continue
+        return cloned or None
+
+    def _collect_peer_traces(self) -> Optional[Dict[str, Any]]:
+        if self._peer_trace_limit <= 0:
+            return None
+        collected: Dict[str, Any] = {}
+        peers = sorted(
+            [blk for blk in GatedEquivariantBlock._instances if blk is not self and blk._debug_id < self._debug_id],
+            key=lambda blk: blk._debug_id,
+        )
+        for blk in peers:
+            if len(collected) >= self._peer_trace_limit:
+                break
+            peer_entry: Dict[str, Any] = {}
+            if blk._trace_cache:
+                peer_entry["trace"] = {k: v.clone() for k, v in blk._trace_cache.items()}
+            inputs = blk._clone_inputs()
+            if inputs:
+                peer_entry["inputs"] = inputs
+            peer_entry["active_ids"] = blk._format_active_ids()
+            if peer_entry:
+                collected[f"block_{blk._debug_id}"] = peer_entry
+        return collected or None
+
+    def forward(self, x, v):
+        if self._debug_enabled:
+            with torch.no_grad():
+                try:
+                    self._last_inputs = {
+                        "x": x.detach().float().cpu(),
+                        "v": v.detach().float().cpu(),
+                    }
+                except Exception:
+                    self._last_inputs = None
+            self._trace_cache = {}
+            self._trace_dumped = False
+        else:
+            self._last_inputs = None
+            self._trace_cache = {}
+            self._trace_dumped = False
+
+        self._log_tensor_state("input_scalar", x)
+        self._log_tensor_state("input_vec", v)
+        vec1_proj = self._apply_internal_clip("vec1_proj", self.vec1_proj(v))
+        self._log_tensor_state("vec1_proj", vec1_proj)
+        vec1 = torch.norm(vec1_proj, dim=-2)
+        self._log_tensor_state("vec1_norm", vec1)
+        vec2 = self._apply_internal_clip("vec2_proj", self.vec2_proj(v))
+        self._log_tensor_state("vec2_proj", vec2)
+
+        x_cat = torch.cat([x, vec1], dim=-1)
+        self._log_tensor_state("update_input", x_cat)
+        update_out = self._apply_internal_clip("update_output", self.update_net(x_cat))
+        self._log_tensor_state("update_output", update_out)
+        x, v_gate = torch.split(update_out, self.out_channels, dim=-1)
+        x = self._apply_internal_clip("x_pre_gate", x)
+        v_gate = self._apply_internal_clip("v_gate", v_gate)
+        self._log_tensor_state("x_pre_gate", x)
+        self._log_tensor_state("v_gate", v_gate)
+        v = v_gate.unsqueeze(1) * vec2
+        v = self._apply_internal_clip("vec_post_gate", v)
+        self._log_tensor_state("vec_post_gate", v)
 
         x = self.act(x)
+        x = self._apply_internal_clip("x_post_act", x)
+        self._log_tensor_state("x_post_act", x)
         return x, v
+
+    def _apply_internal_clip(self, label: str, tensor: torch.Tensor) -> torch.Tensor:
+        limit = self._internal_clip
+        if limit > 0.0 and torch.is_tensor(tensor):
+            clipped = torch.clamp(tensor, min=-limit, max=limit)
+            if self._debug_enabled and torch.any(clipped != tensor):
+                logging.warning(
+                    "[geblock][%d] %s clipped to +/-%.3e ids=%s",
+                    self._debug_id,
+                    label,
+                    limit,
+                    self._format_active_ids(),
+                )
+            return clipped
+        return tensor
 
 
 def repeat_blocks(

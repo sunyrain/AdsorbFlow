@@ -12,52 +12,139 @@ from adsorbdiff.placement import DetectTrajAnomaly
 import multiprocessing as mp
 import matplotlib.pyplot as plt
 
+def _parse_sid_fid_from_name(traj_filename: str):
+    stem = Path(traj_filename).stem  # 'xxx.traj' -> 'xxx'
+    parts = stem.split("_")
+    if len(parts) >= 4:
+        # 形如 a_b_c_d -> 认为最后一个是 fid，其余拼回 sid（兼容更长的名称）
+        sid = "_".join(parts[:-1])
+        fid = parts[-1]
+    elif len(parts) >= 3:
+        # 形如 a_b_c：保持原始 stem 以匹配 DFT target，仍返回 fid 信息
+        sid = stem
+        fid = parts[-1]
+    elif len(parts) == 2:
+        sid = stem
+        fid = parts[-1]
+    else:
+        sid = stem
+        fid = "0"
+    return sid, fid
 
 def get_success_from_trajs_rewrite(traj_path, dft_targets):
-    traj_files = glob.glob(traj_path + "/*.traj")
-    anom_dict = {}
-    total_anoms = np.zeros(4)
-    success_rate = 0.0
-    minE_dict = defaultdict(dict)
-    with tqdm(total=len(dft_targets)) as pbar:
-        for traj_file in traj_files:
-            if traj_file.split("/")[-1].count("_") == 3:
-                sid, fid = (
-                    traj_file.split("/")[-1].split(".")[0].rsplit("_", 1)
-                )
-            elif traj_file.split("/")[-1].count("_") == 2:
-                sid = traj_file.split("/")[-1].split(".")[0]
-                fid = 0
-            if sid in minE_dict:
+    traj_files = glob.glob(str(Path(traj_path) / "*.traj"))
 
-                continue
-            pbar.update(1)
-            traj_paths_by_sid = glob.glob(f"{traj_path}/{sid}*.traj")
-            minE = float("inf")
-            for traj_per_sid in traj_paths_by_sid:
+    # 预聚合：目录里有哪些唯一 sid
+    sids_in_dir = set()
+    for f in traj_files:
+        sid, _ = _parse_sid_fid_from_name(f)
+        sids_in_dir.add(sid)
+
+    anom_dict = defaultdict(dict)      # {sid: {fid: anom_vec}}
+    total_anoms = np.zeros(4, dtype=float)
+    minE_dict = {}                     # {sid: float}
+    success_hits = 0
+    successful_sids = set()
+    reason_counters = defaultdict(int)
+    diff_samples = []                  # list of minE - dft_target per valid sid
+
+    pbar = tqdm(total=len(sids_in_dir))
+    for sid in sids_in_dir:
+        # 为该 sid 找到所有候选
+        traj_paths_by_sid = glob.glob(f"{traj_path}/{sid}*.traj")
+        minE = float("inf")
+        any_valid = False
+
+        for traj_per_sid in traj_paths_by_sid:
+            try:
                 traj = ase.io.read(traj_per_sid, ":")
-                mlE = traj[-1].get_potential_energy()
+            except Exception as e:
+                # 读取失败，跳过
+                reason_counters["read_error"] += 1
+                continue
 
-                anom = anomalous_structure(traj)
-                total_anoms += anom
-                if anom.any():
-                    anom_dict[sid] = {fid: anom}
-                    continue
-                if mlE < minE:
-                    minE = mlE
+            # 末帧 ML 势能（标量）
+            try:
+                mlE_raw = traj[-1].get_potential_energy()
+            except Exception:
+                mlE_raw = traj[-1].info.get("energy")
+
+            if mlE_raw is None:
+                reason_counters["no_energy"] += 1
+                continue
+            mlE_array = np.atleast_1d(mlE_raw)
+            mlE = float(mlE_array.reshape(-1)[0])
+
+
+            # 结构异常过滤
+            anom = anomalous_structure(traj)  # 假定返回长度为4的 0/1 数组或布尔
+            total_anoms += np.array(anom, dtype=float)
+
+            # 记录该具体文件的 fid
+            _, fid = _parse_sid_fid_from_name(traj_per_sid)
+            if np.any(anom):
+                reason_counters["anomalous"] += 1
+                anom_dict[sid][fid] = anom
+                continue  # 不参与 minE
+
+            any_valid = True
+            if mlE < minE:
+                minE = mlE
+
+        # 完成一个 sid
+        pbar.update(1)
+        if sid in dft_targets and any_valid:
             minE_dict[sid] = minE
-            success_rate += is_successful(minE, dft_targets[sid])
+            diff_samples.append(minE - dft_targets[sid])
+            if is_successful(minE, dft_targets[sid], sid=sid):
+                success_hits += 1
+                successful_sids.add(sid)
+                print("Successful sid:", sid)
+        elif not any_valid:
+            reason_counters["all_filtered"] += 1
+        elif sid not in dft_targets:
+            reason_counters["missing_dft"] += 1
+        # 若不在 dft_targets：可选择跳过或警告；这里选择跳过
 
-    success_rate /= len(minE_dict)
-    print(len(minE_dict))
-    if not Path(f"{traj_path}/anomalous_structures_new.pkl").exists():
-        with open(f"{traj_path}/anomalous_structures_new.pkl", "wb") as f:
-            pickle.dump(anom_dict, f)
-    if not Path(f"{traj_path}/success_new.txt").exists():
-        with open(f"{traj_path}/success_new.txt", "w") as f:
-            f.write(str(success_rate * 100))
+    pbar.close()
+
+    # 分母选用“有有效候选且存在 DFT 目标的 sid 数目”
+    # denom = max(1, len(minE_dict))
+    # Modified: success rate based on total number of SIDs in targets (including anomalous ones)
+    total_sids_in_targets = sum(1 for sid in sids_in_dir if sid in dft_targets)
+    denom = max(1, total_sids_in_targets)
+    success_rate = success_hits / denom
+
+    # 建议：每次都覆盖，避免“丝毫没有改变”的错觉
+    with open(f"{traj_path}/anomalous_structures_new.pkl", "wb") as f:
+        pickle.dump(dict(anom_dict), f)
+
+    with open(f"{traj_path}/success_new.txt", "w") as f:
+        f.write(str(success_rate * 100.0))
+
+    valid_count = len(minE_dict)
+    if diff_samples:
+        diff_array = np.asarray(diff_samples, dtype=float)
+        diff_mean = float(diff_array.mean())
+        diff_var = float(diff_array.var())
+    else:
+        diff_mean = None
+        diff_var = None
+    print(f"#valid_sids = {valid_count} / {total_sids_in_targets} targets / {len(sids_in_dir)} in dir")
     print("Anomalies", total_anoms)
-    print("Success rate: ", success_rate * 100)
+    print("Success hits", success_hits)
+    print("Success rate: ", success_rate * 100.0)
+    if diff_samples:
+        print(f"Energy diff stats (ML-DFT): mean={diff_mean:.6f}, var={diff_var:.6f}")
+    else:
+        print("Energy diff stats (ML-DFT): no valid samples")
+    if reason_counters:
+        print("Filtering stats:")
+        for key, value in sorted(reason_counters.items()):
+            print(f"  {key}: {value}")
+
+    return success_rate * 100.0, valid_count, success_hits, diff_mean, diff_var, successful_sids, total_sids_in_targets
+
 
 
 def get_success_from_train_trajs(traj_path, train_minE_pos):
@@ -94,7 +181,7 @@ def get_success_from_train_trajs(traj_path, train_minE_pos):
                 if mlE[0] < minE:
                     minE = mlE[0]
             minE_dict[sid] = minE
-            success_rate += is_successful(minE, train_minE_pos[sid]["energy"])
+            success_rate += is_successful(minE, train_minE_pos[sid]["energy"], sid=sid)
 
     success_rate /= 44
     print(len(minE_dict))
@@ -152,7 +239,7 @@ def get_success_from_dft_valood(traj_path, dft_targets):
                         minE = mlE
                 minE_dict[sid] = minE
                 count += 1
-                success_rate += is_successful(minE, dft_targets[sid])
+                success_rate += is_successful(minE, dft_targets[sid], sid=sid)
             except Exception as e:
                 print(e)
                 print("Error with ", traj_file)
@@ -218,7 +305,7 @@ def get_success_from_dft_train(traj_path, train_minE_pos):
                 minE_dict[sid] = minE
                 count += 1
                 success_rate += is_successful(
-                    minE, train_minE_pos[sid]["energy"]
+                    minE, train_minE_pos[sid]["energy"], sid=sid
                 )
             except Exception as e:
                 print(e)
@@ -285,7 +372,7 @@ def get_success_from_dft(traj_path, dft_targets):
                     if mlE < minE:
                         minE = mlE
                 minE_dict[sid] = minE
-                success_rate += is_successful(minE, dft_targets[sid])
+                success_rate += is_successful(minE, dft_targets[sid], sid=sid)
             except Exception as e:
                 print(e)
                 print("Error with ", traj_file)
@@ -322,7 +409,7 @@ def get_success_from_trajs_parallel(traj_path, dft_targets, num_workers=8):
             if mlE < minE:
                 minE = mlE
         minE_dict[sid] = minE
-        return is_successful(minE, dft_targets[sid])
+        return is_successful(minE, dft_targets[sid], sid=sid)
 
     success_rate = mp.Pool(num_workers).map(
         success_per_sid, dft_targets.keys()
@@ -365,7 +452,7 @@ def get_success_from_noisy_relax_trajs(traj_path, dft_targets):
                 if mlE < minE:
                     minE = mlE
             minE_dict[sid] = minE
-            success_rate += is_successful(minE, dft_targets[sid])
+            success_rate += is_successful(minE, dft_targets[sid], sid=sid)
             pbar.update(1)
     success_rate /= len(minE_dict)
     print(len(minE_dict))
@@ -409,7 +496,7 @@ def get_success_from_train_trajs_nsite(traj_path, train_minE_pos):
                 if mlE < minE:
                     minE = mlE
             minE_dict[sid] = minE
-            success_rate += is_successful(minE, train_minE_pos[sid]["energy"])
+            success_rate += is_successful(minE, train_minE_pos[sid]["energy"], sid=sid)
             pbar.update(1)
     success_rate /= len(minE_dict)
     print(len(minE_dict))
@@ -453,7 +540,7 @@ def get_success_from_noisy_relax_train_trajs(traj_path, train_minE_pos):
                 if mlE < minE:
                     minE = mlE
             minE_dict[sid] = minE
-            success_rate += is_successful(minE, train_minE_pos[sid]["energy"])
+            success_rate += is_successful(minE, train_minE_pos[sid]["energy"], sid=sid)
             pbar.update(1)
     success_rate /= len(minE_dict)
     print(len(minE_dict))
@@ -499,7 +586,7 @@ def get_success_from_npz_energies(npz_path, traj_path, dft_targets):
                 if mlE < minE:
                     minE = mlE
             minE_dict[sid] = minE
-            success_rate += is_successful(minE, dft_targets[sid])
+            success_rate += is_successful(minE, dft_targets[sid], sid=sid)
 
     success_rate /= len(minE_dict)
     print(len(minE_dict))
@@ -537,7 +624,7 @@ def get_success_from_pkl(pkl_path, dft_targets):
                 minE = mlE
                 ml_dft_E = pkl[sid][config]["ml+dft_energy"]
 
-        success = is_successful(minE, dft_targets[sid])
+        success = is_successful(minE, dft_targets[sid], sid=sid)
         success_rate += success
         dft_E = dft_targets[sid]
         if abs(dft_E - ml_dft_E) > 0.1:
@@ -557,7 +644,7 @@ def calculate_success_metrics(minE_dict, dft_targets, traj_paths):
     print("Calculating success rate ...")
     for traj in tqdm(traj_paths):
         sid, fid = traj.split("/")[-1].split(".")[0].rsplit("_", 1)[0]
-        success = is_successful(minE_dict[sid][0], dft_targets[sid])
+        success = is_successful(minE_dict[sid][0], dft_targets[sid], sid=sid)
         success_rate += success
     success_rate /= len(traj_paths)
     print("Success rate: ", success_rate * 100)
@@ -579,10 +666,14 @@ def anomalous_structure(traj):
     return anom
 
 
-def is_successful(best_pred_energy, best_dft_energy, SUCCESS_THRESHOLD=0.1):
+def is_successful(best_pred_energy, best_dft_energy, sid=None, SUCCESS_THRESHOLD=0.1):
     diff = best_pred_energy - best_dft_energy
     success_parity = diff <= SUCCESS_THRESHOLD
-
+    if not success_parity:
+        if sid is not None:
+            print(f"This traj is not successful (sid={sid}): ", diff)
+        else:
+            print("This traj is not successful: ", diff)
     return success_parity
 
 
@@ -603,13 +694,15 @@ def is_successful(best_pred_energy, best_dft_energy, SUCCESS_THRESHOLD=0.1):
 def get_dft_data(targets):
     dft_data = defaultdict(dict)
     final_dft_data = {}
+    print(targets)
     for system in targets:
+        print(system)
         for adslab in targets[system]:
             dft_data[system][adslab[0]] = adslab[1]
         final_dft_data[system] = min(list(dft_data[system].values()))
 
     with open(
-        "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/dft_val_minE_new.pkl",
+        "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_targets.pkl",
         "wb",
     ) as f:
         pickle.dump(final_dft_data, f)
@@ -880,17 +973,17 @@ if __name__ == "__main__":
     # traj_path = "/home/jovyan/shared-scratch/adeesh/denoising/overfit_sde/pretrain-bysigma_lmdbcorr2-overfit_std0.1-10_numstep50_sample1"
     # traj_path = "/home/jovyan/shared-scratch/adeesh/denoising/val44_baseline/noisybfgs/val44_std-schedule1_xyads_wrandrots_NS10"
     # traj_path = "/home/jovyan/shared-scratch/adeesh/denoising/vasp/gnoc/rand1_I1"
-    traj_path = "/home/jovyan/shared-scratch/adeesh/denoising/valid_rerun/debug_painn_prev2/0/relaxations"
+    traj_path = "/root/autodl-tmp/AdsorbDiff/0/relaxations"
     # traj_path = "/home/jovyan/shared-scratch/adeesh/denoising/valood_baseline/R1I0.1"
     # traj_path = "/home/jovyan/shared-scratch/adeesh/denoising/val44_baseline/w_rot/is2rs_conditional/relaxations"
     print(traj_path.split("/")[-1])
 
     npz_path = "/home/jovyan/shared-scratch/adeesh/denoising/lmdbs/randheur100_I0.1_fmax0.03/eq2_23M_2M/results/2023-10-13-16-53-20/s2ef_predictions.npz"
     # get DFT targets
-    dft_target_path = "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/dft_val_minE_new.pkl"
+    dft_target_path = "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_targets.pkl"
     if not Path(dft_target_path).exists():
         with open(
-            "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/oc20dense_val_targets.pkl",
+            "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_targets.pkl",
             "rb",
         ) as f:
             dft_targets = pickle.load(f)
@@ -898,30 +991,30 @@ if __name__ == "__main__":
     else:
         with open(dft_target_path, "rb") as f:
             dft_targets = pickle.load(f)
-    dft_target_pos_path = "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/dft_val_minE_pos.pkl"
-    tag_path = (
-        "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/oc20dense_tags.pkl"
-    )
-    with open(os.path.join(tag_path), "rb") as h:
-        tags_map = pickle.load(h)
-    if not Path(dft_target_pos_path).exists():
-        with open(
-            "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/oc20dense_val_targets.pkl",
-            "rb",
-        ) as f:
-            dft_targets = pickle.load(f)
-        dft_pos_target = get_minE_pos(dft_targets)
-    else:
-        with open(dft_target_pos_path, "rb") as f:
-            dft_pos_target = pickle.load(f)
+    # dft_target_pos_path = "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/dft_val_minE_pos.pkl"
+    # tag_path = (
+    #     "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_tags.pkl"
+    # )
+    # with open(os.path.join(tag_path), "rb") as h:
+    #     tags_map = pickle.load(h)
+    # if not Path(dft_target_pos_path).exists():
+    #     with open(
+    #         "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_targets.pkl",
+    #         "rb",
+    #     ) as f:
+    #         dft_targets = pickle.load(f)
+    #     dft_pos_target = get_minE_pos(dft_targets)
+    # else:
+    #     with open(dft_target_pos_path, "rb") as f:
+    #         dft_pos_target = pickle.load(f)
 
-    with open(
-        "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/train_minE_pos.pkl",
-        "rb",
-    ) as f:
-        train_minE_pos = pickle.load(f)
+    # with open(
+    #     "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/train_minE_pos.pkl",
+    #     "rb",
+    # ) as f:
+    #     train_minE_pos = pickle.load(f)
 
-    get_success_from_train_trajs(traj_path, train_minE_pos)
+    # get_success_from_train_trajs(traj_path, train_minE_pos)
     # get_success_from_train_trajs_nsite(traj_path, train_minE_pos)
     # get_success_from_pkl("/home/jovyan/shared-scratch/adeesh/data/oc20_dense/results.pkl", dft_targets)
     # calculate_pos_maes(traj_path, 1)
@@ -929,7 +1022,7 @@ if __name__ == "__main__":
     # calculate_final_pos_maes(traj_path)
     # get_success_from_trajs(traj_path, dft_targets, 1)
     # parallelized_adwt("/home/jovyan/shared-scratch/adeesh/denoising/relaxations_fmax0.01/densetrain-diff_low0.01_high5_numstep20*50_lr1e-6", -1)
-    # get_success_from_trajs_rewrite(traj_path, dft_targets)
+    get_success_from_trajs_rewrite(traj_path, dft_targets)
     # get_success_from_noisy_relax_trajs(traj_path, dft_targets)
     # get_success_from_noisy_relax_train_trajs(traj_path, train_minE_pos)
     # get_success_from_npz_energies(npz_path, traj_path, dft_targets)

@@ -1,5 +1,8 @@
 import math
 import torch
+from typing import Optional, Dict, Any, Union
+from torch_scatter import scatter
+from ase.data import atomic_masses
 
 from adsorbdiff.utils.registry import registry
 from adsorbdiff.utils.utils import conditional_grad
@@ -162,34 +165,41 @@ class EquiformerV2S_OC20_DenoisingPos(EquiformerV2_OC20):
         self.FOR_denoising = FOR_denoising
         self.sampling = sampling
 
-        atom_radii = torch.zeros(101, device=self.device)
-        for i in range(101):
+        # Initialize atom radii with support for shifted indices
+        atom_radii = torch.zeros(max_num_elements + 1, device=self.device)
+        for i in range(min(101, len(ATOMIC_RADII))):
             atom_radii[i] = ATOMIC_RADII[i]
+        
+        # Map shifted elements (1, 6, 7, 8 -> 101, 106, 107, 108)
+        # We assume the shift is always +100 for these elements as per tag_based_Z
+        for el in [1, 6, 7, 8]:
+            if el + 100 <= max_num_elements:
+                atom_radii[el + 100] = ATOMIC_RADII[el]
+
         self.atom_radii = atom_radii / 100
         self.atom_radii = torch.nn.Parameter(atom_radii, requires_grad=False)
 
-    def tag_based_Z(self, data):
+    def tag_based_Z(self, data) -> torch.Tensor:
         # This will create new embeddings for adsorbate atom types in slabs
         an = data.atomic_numbers
         cnho_an = [1, 6, 7, 8]
-        mask = data.tags < 2 & (
+        mask = (data.tags < 2) & (
             (an == cnho_an[0])
             | (an == cnho_an[1])
             | (an == cnho_an[2])
             | (an == cnho_an[3])
         )
-        an[mask] += 100
-        data.atomic_numbers = an
-        return data
+        an_mod = an.clone()
+        an_mod[mask] += 100
+        return an_mod
 
     @conditional_grad(torch.enable_grad())
-    def forward(self, data):
+    def forward(self, data, mode: Optional[str] = None):
         self.batch_size = len(data.natoms)
         self.dtype = data.pos.dtype
         self.device = data.pos.device
 
-        data = self.tag_based_Z(data)
-        atomic_numbers = data.atomic_numbers.long()
+        atomic_numbers = self.tag_based_Z(data).long()
         num_atoms = len(atomic_numbers)
         pos = data.pos
 
@@ -260,7 +270,7 @@ class EquiformerV2S_OC20_DenoisingPos(EquiformerV2_OC20):
                 node_wise_y = data.energy[data.batch].unsqueeze(-1)
             else:
                 node_wise_y = torch.zeros_like(data.batch).unsqueeze(-1)
-            energy_embedding = self.energy_embedding(node_wise_y.half())
+            energy_embedding = self.energy_embedding(node_wise_y.to(self.dtype))
             x.embedding[:, 0, :] = x.embedding[:, 0, :] + energy_embedding
 
         # Edge encoding (distance and atom edge)
@@ -307,12 +317,98 @@ class EquiformerV2S_OC20_DenoisingPos(EquiformerV2_OC20):
         forces = self.force_block(x, atomic_numbers, edge_distance, edge_index)
         forces = forces.embedding.narrow(1, 1, 3)
         forces = forces.view(-1, 3)
-        if not self.FOR_denoising:
-            return forces
-        else:
+
+        forces2 = None
+        if self.FOR_denoising:
             forces2 = self.force_block2(
                 x, atomic_numbers, edge_distance, edge_index
             )
             forces2 = forces2.embedding.narrow(1, 1, 3)
             forces2 = forces2.view(-1, 3)
+
+        if mode == "fm":
+            return self._forward_flow(data, forces, forces2)
+
+        if not self.FOR_denoising:
+            return forces
+        else:
             return forces, forces2
+
+    def _forward_flow(self, data, forces: torch.Tensor, forces2: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
+        """Project per-atom outputs to the rigid body (translation/rotation) flow heads."""
+        if not hasattr(data, "batch") or not hasattr(data, "tags"):
+            raise ValueError("Flow matching mode expects 'batch' and 'tags' attributes on the input data.")
+
+        batch_idx = data.batch
+        tags = data.tags
+        ads_mask = tags == 2
+        if not torch.any(ads_mask) and tags.dtype == torch.bool:
+            ads_mask = tags
+
+        if not torch.any(ads_mask):
+            raise RuntimeError("No adsorbate atoms (tag==2) found; cannot form flow outputs.")
+
+        if hasattr(data, "natoms"):
+            batch_size = int(data.natoms.shape[0])
+        else:
+            batch_size = int(batch_idx.max().item()) + 1
+
+        ads_forces = forces[ads_mask]
+        
+        # 准备质量数据 (用于质心计算)
+        an = data.atomic_numbers[ads_mask].long()
+        device = data.pos.device
+        mass_table = torch.tensor(atomic_masses, device=device, dtype=ads_forces.dtype)
+        masses = mass_table[an]
+        ads_batch = batch_idx[ads_mask]
+        
+        # 计算总质量 (per graph)
+        total_mass = scatter(masses, ads_batch, dim=0, dim_size=batch_size, reduce="sum")
+        total_mass = torch.clamp(total_mass, min=1e-6)
+
+        # === 1. Translation 部分 (修改为: 质心速度 = 动量 / 总质量) ===
+        # Translation is a polar vector. Use mass-weighted mean for CoM velocity.
+        weighted_forces = ads_forces * masses.unsqueeze(-1)
+        sum_weighted_forces = scatter(weighted_forces, ads_batch, dim=0, dim_size=batch_size, reduce="sum")
+        translation = sum_weighted_forces / total_mass.unsqueeze(-1)
+        
+        if translation.size(-1) >= 3:
+            translation[:, 2] = 0.0
+
+        # === 2. Rotation 部分 (关键修改: 引入叉积聚合以匹配轴矢量宇称) ===
+        if forces2 is not None:
+            ads_forces2 = forces2[ads_mask]
+            
+            # (A) 计算吸附剂中心 (Center of Mass)
+            ads_pos = data.pos[ads_mask]
+            
+            # 计算质心: sum(m * r) / sum(m)
+            weighted_pos = ads_pos * masses.unsqueeze(-1)
+            sum_weighted_pos = scatter(weighted_pos, ads_batch, dim=0, dim_size=batch_size, reduce="sum")
+            centers = sum_weighted_pos / total_mass.unsqueeze(-1)
+            
+            # (B) 计算相对坐标 r (relative position)
+            # centers[ads_batch] 将中心坐标广播回每个原子
+            rel_pos = ads_pos - centers[ads_batch]
+
+            # (C) 计算"力矩"项: r x v
+            # PaiNN 输出的是极矢量(类似切向速度)，通过叉积转换为轴矢量(旋转轴)
+            # 这样可以解决"刚体旋转的平均线速度为0"的问题，同时匹配宇称(Polar x Polar = Axial)
+            torque_like = torch.cross(rel_pos, ads_forces2, dim=-1)
+            
+            # (D) 聚合得到全局旋转量
+            rotation = scatter(torque_like, ads_batch, dim=0, dim_size=batch_size, reduce="mean")
+        else:
+            rotation = torch.zeros(
+                batch_size,
+                3,
+                device=translation.device,
+                dtype=translation.dtype,
+            )
+
+        # === 3. 组装输出 ===
+        outputs: Dict[str, torch.Tensor] = {
+            "v_tr": translation,
+            "v_rot": rotation,
+        }
+        return outputs

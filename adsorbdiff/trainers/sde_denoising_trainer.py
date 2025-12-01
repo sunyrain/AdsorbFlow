@@ -527,6 +527,11 @@ class DenoisingTrainer(OCPTrainer):
 
             torch.cuda.empty_cache()
 
+            self.save_epoch_checkpoint(
+                epoch_index=epoch_int,
+                disable_eval_tqdm=disable_eval_tqdm,
+            )
+
             if checkpoint_every == -1:
                 self.save(checkpoint_file="checkpoint.pt", training_state=True)
 

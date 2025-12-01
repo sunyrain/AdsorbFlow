@@ -1,0 +1,84 @@
+trainer: adsorbdiff.trainers.meanflow_rot_trainer.MeanFlowRotationTrainer
+
+dataset:
+  - src:  /root/autodl-tmp/AdsorbDiff/train_general
+  #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/train
+  #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs/train_oc20dense_rs_overfit
+    normalize_labels: False
+  - src: /root/autodl-tmp/AdsorbDiff/val_split
+    normalize_labels: False
+logger:
+  name: wandb
+  project: ads_COM_diff
+
+task:
+  dataset: lmdb
+  train_on_free_atoms: True
+  eval_on_free_atoms: True
+  relaxation_steps: 300
+  relaxation_fmax: 0.01
+  relax_dataset:
+        src: /root/autodl-tmp/AdsorbDiff/val_nonrelaxed_update
+  relax_opt:
+        maxstep: 0.04
+        memory: 50
+        damping: 1.0
+        alpha: 70.0
+        traj_dir: /root/autodl-tmp/AdsorbDiff/relax_opt
+  primary_metric: rot_mse
+hide_eval_progressbar: False
+
+model:
+  name: adsorbdiff.models.painn.painn_rot_only.PaiNNRotationOnly
+  hidden_channels: 512
+  num_layers: 6
+  num_rbf: 128
+  cutoff: 12.0
+  max_neighbors: 50
+  scale_file: configs/scaling_factors/painn_nb6_scaling_factors.pt
+  regress_forces: True
+  direct_forces: True
+  use_pbc: True
+  so3_denoising: True
+
+optim:
+  batch_size:                   4
+  eval_batch_size:              4
+  grad_accumulation_steps:      1
+  load_balancing: atoms
+  num_workers: 4
+  lr_initial:                   0.0002
+
+  optimizer: AdamW
+  optimizer_params:
+    weight_decay: 0.001
+  scheduler: CosineAnnealingLR
+  T_max: 100
+  eta_min: 0.000001 
+
+  patience: 3
+  max_epochs: 100
+  force_coefficient: 100
+  energy_coefficient: 1
+  clip_grad_norm: 100000
+  ema_decay: 0.999
+  loss_energy: mae
+  loss_force: l2mae
+  
+
+  flow:
+    type: fm
+    path: rectified
+    time_sampl: uniform
+    tr_sigma: 0.0
+    rot_sigma: 1.0
+    tr_clip: null
+    rot_clip: 5.0
+    rot_loss_weight: 10.0
+    endpoint_weight_exponent: 0
+    debug_interval: 100
+    monitor_interval: 100
+    output_clip:
+      default: 20.0
+      translation: 40.0
+      rotation: 10.0

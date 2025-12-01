@@ -4,9 +4,11 @@
 # LICENSE file in the root directory of this source tree.
 
 __all__ = [
-    "BaseTrainer",
-    "OCPTrainer",
-]
-
+     "BaseTrainer",
+     "OCPTrainer",
+     "MeanFlowTrainer",
+ ]
+ 
 from .base_trainer import BaseTrainer
 from .ocp_trainer import OCPTrainer
+from .meanflow_trainer import MeanFlowTrainer

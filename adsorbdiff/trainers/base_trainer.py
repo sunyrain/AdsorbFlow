@@ -7,6 +7,7 @@ LICENSE file in the root directory of this source tree.
 import datetime
 import errno
 import logging
+import math
 import os
 import random
 from abc import ABC
@@ -75,6 +76,8 @@ class BaseTrainer(ABC):
         self.cpu = cpu
         self.epoch = 0
         self.step = 0
+        self._last_val_metrics = None
+        self._last_val_step = -1
 
         if torch.cuda.is_available() and not self.cpu:
             self.device = torch.device(f"cuda:{local_rank}")
@@ -683,6 +686,39 @@ class BaseTrainer(ABC):
                 return ckpt_path
         return None
 
+    def save_epoch_checkpoint(
+        self,
+        epoch_index: int,
+        disable_eval_tqdm: bool = True,
+    ) -> None:
+        """Persist one checkpoint per epoch with val loss encoded in filename."""
+        metrics = self._last_val_metrics
+        if (
+            self.val_loader is not None
+            and (metrics is None or self._last_val_step != self.step)
+        ):
+            metrics = self.validate(
+                split="val", disable_tqdm=disable_eval_tqdm
+            )
+
+        val_loss = None
+        if metrics and "loss" in metrics:
+            val_loss = metrics["loss"].get("metric")
+
+        if val_loss is None or not math.isfinite(val_loss):
+            loss_tag = "noval" if val_loss is None else "invalid"
+        else:
+            loss_tag = f"{val_loss:.4f}"
+
+        checkpoint_name = (
+            f"epoch{epoch_index + 1:04d}_valloss{loss_tag}.pt"
+        )
+        self.save(
+            metrics=metrics,
+            checkpoint_file=checkpoint_name,
+            training_state=False,
+        )
+
     def update_best(
         self,
         primary_metric,
@@ -690,10 +726,10 @@ class BaseTrainer(ABC):
         disable_eval_tqdm: bool = True,
     ) -> None:
         if (
-            "mae" in primary_metric
+            ("mae" in primary_metric or "loss" in primary_metric)
             and val_metrics[primary_metric]["metric"] < self.best_val_metric
         ) or (
-            "mae" not in primary_metric
+            ("mae" not in primary_metric and "loss" not in primary_metric)
             and val_metrics[primary_metric]["metric"] > self.best_val_metric
         ):
             self.best_val_metric = val_metrics[primary_metric]["metric"]
@@ -782,6 +818,8 @@ class BaseTrainer(ABC):
         if self.ema:
             self.ema.restore()
 
+        self._last_val_metrics = metrics
+        self._last_val_step = self.step
         return metrics
 
     def _backward(self, loss) -> None:

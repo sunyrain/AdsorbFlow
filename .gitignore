@@ -5,7 +5,8 @@ results
 logs
 *.traj
 *.sh
-
+grid_search_runs
+exports
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -110,4 +111,20 @@ Local
 .idea/
 
 # VS Code
-.vscode/
+.vscode/*.lmdb
+*.pt
+train_allE/
+train_split/
+val_split/
+val_nonrelaxed_update/
+valood50_R1I0.1/
+train_allE_small/
+*.lmdb
+*.pt
+*.pkl
+train_allE/
+train_split/
+val_split/
+val_nonrelaxed_update/
+valood50_R1I0.1/
+train_allE_small/

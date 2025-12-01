@@ -1,20 +1,26 @@
+import os
+os.environ["VASP_PP_PATH"] = "/root/autodl-tmp/potpaw_PBE_54"
+
 import numpy as np
 import ase.io
 from tqdm import tqdm
-import lmdb, time, copy, shutil, glob, random, sys, datetime, pickle, lmdb, os
+import lmdb, time, copy, shutil, glob, random, sys, datetime, pickle
+sys.path.append("/root/autodl-tmp/AdsorbDiff/Open-Catalyst-Dataset")
 from ocdata.utils.vasp import write_vasp_input_files
 from adsorbdiff.placement import DetectTrajAnomaly
 import os
 
 # Link to the directory with all simulations for an adslab system
-TRAJ_INPUT_PATH = ""
+# [Auto-filled] 指向你 grid search 中效果较好的一个配置 (例如 cfg1_steps50)
+TRAJ_INPUT_PATH = "/root/autodl-tmp/AdsorbDiff/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg1_steps30"
+EXPORT_PATH = "/root/autodl-tmp/vasp_cluster_inputs"
 
 # Add link to the tags.pkl file
-tag_path = ""
+tag_path = "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_tags.pkl"
 
 VASP_FLAGS = {
-    "ibrion": 2,
-    "nsw": 0,
+    "ibrion": 2, # Static calculation (no relaxation)
+    "nsw": 0,     # 0 ionic steps
     "isif": 0,
     "isym": 0,
     "lreal": "Auto",
@@ -27,13 +33,15 @@ VASP_FLAGS = {
     "gga": "RP",
     "pp": "PBE",
     "xc": "PBE",
+    "setups": "minimal",
 }
 
 with open(os.path.join(tag_path), "rb") as h:
     tags_map = pickle.load(h)
 
+# Modified glob pattern to match the directory structure: .../site_id/relaxations/*.traj
 traj_paths = glob.glob(
-    f"{TRAJ_INPUT_PATH}/*/*.traj"
+    f"{TRAJ_INPUT_PATH}/*/relaxations/*.traj"
 )
 
 
@@ -73,12 +81,11 @@ for traj_path in tqdm(traj_paths):
     # get the minimum energy structure
     energies = np.array(
         list(map(lambda x: ase.io.read(x).get_potential_energy(), files_per_sid))
-    )
+    ).flatten()
     sorted_energy_idx = np.argsort(energies)
-    
     count = 0
     while count < len(sorted_energy_idx):
-        traj = ase.io.read(files_per_sid[sorted_energy_idx[0]], ":")
+        traj = ase.io.read(files_per_sid[int(sorted_energy_idx[0])], ":")
         if anomalous_structure(traj, sid).any():
             sorted_energy_idx = sorted_energy_idx[1:]
         else:
@@ -95,9 +102,21 @@ for traj_path in tqdm(traj_paths):
     fixed_atoms = np.where(tags == 2)[0]
     relaxed_struct.set_constraint(ase.constraints.FixAtoms(fixed_atoms))
     
+    # 1. Export to original location
     os.makedirs(f"{TRAJ_INPUT_PATH}/vasp", exist_ok=True)
     write_vasp_input_files(
         relaxed_struct,
         outdir=f"{TRAJ_INPUT_PATH}/vasp/{sid}_{fid}",
         vasp_flags=VASP_FLAGS,
     )
+
+    # 2. Export to independent folder for cluster
+    export_dir = os.path.join(EXPORT_PATH, f"{sid}_{fid}")
+    os.makedirs(export_dir, exist_ok=True)
+    
+    write_vasp_input_files(
+        relaxed_struct,
+        outdir=export_dir,
+        vasp_flags=VASP_FLAGS,
+    )
+    print(f"Generated inputs for {sid} in {export_dir} and original path")

@@ -34,6 +34,10 @@ class LBFGS:
         traj_dir: Optional[Path] = None,
         traj_names=None,
         early_stop_batch: bool = False,
+        max_adsorbate_surface_dist: Optional[float] = None,
+        ads_clip_scale: float = 0.5,
+        ads_clip_attempts: int = 3,
+        ads_clip_margin: float = 0.5,
     ) -> None:
         self.batch = batch
         self.model = model
@@ -49,6 +53,20 @@ class LBFGS:
         self.traj_names = traj_names
         self.early_stop_batch = early_stop_batch
         self.otf_graph = model.model._unwrapped_model.otf_graph
+        self.max_adsorbate_surface_dist = (
+            float(max_adsorbate_surface_dist)
+            if max_adsorbate_surface_dist is not None
+            else None
+        )
+        self.ads_clip_scale = float(ads_clip_scale)
+        self.ads_clip_attempts = int(ads_clip_attempts)
+        self.ads_clip_margin = float(ads_clip_margin)
+        if self.max_adsorbate_surface_dist is None or not hasattr(
+            self.batch, "tags"
+        ):
+            # Disable clipping if the batch lacks tagging information or thresholds
+            self.max_adsorbate_surface_dist = None
+            self.ads_clip_attempts = 0
         assert not self.traj_dir or (
             traj_dir and len(traj_names)
         ), "Trajectory names should be specified to save trajectories"
@@ -192,6 +210,11 @@ class LBFGS:
         # descent direction
         p = -z.reshape((-1, 3))
         dr = determine_step(p)
+        if (
+            self.max_adsorbate_surface_dist is not None
+            and self.ads_clip_attempts > 0
+        ):
+            dr = self._enforce_adsorbate_clip(dr)
         if torch.abs(dr).max() < 1e-7:
             # Same configuration again (maybe a restart):
             return
@@ -210,6 +233,74 @@ class LBFGS:
         ):
             if mask[0] or not self.save_full:
                 traj.write(atm)
+
+    def _adsorbate_surface_distances(self, positions: torch.Tensor):
+        """Return per-system min distance between adsorbate and surface atoms."""
+        if self.max_adsorbate_surface_dist is None:
+            return []
+        natoms_list = self.batch.natoms.tolist()
+        pos_split = torch.split(positions.detach(), natoms_list)
+        tag_split = torch.split(self.batch.tags, natoms_list)
+        distances = []
+        for pos_i, tag_i in zip(pos_split, tag_split):
+            ads_mask = tag_i == 2
+            surf_mask = tag_i != 2
+            if torch.count_nonzero(ads_mask) == 0 or torch.count_nonzero(
+                surf_mask
+            ) == 0:
+                distances.append(None)
+                continue
+            ads_pos = pos_i[ads_mask].to(dtype=torch.float32)
+            surf_pos = pos_i[surf_mask].to(dtype=torch.float32)
+            dist = torch.cdist(ads_pos, surf_pos).min().item()
+            distances.append(dist)
+        return distances
+
+    def _enforce_adsorbate_clip(self, dr: torch.Tensor) -> torch.Tensor:
+        """Reduce per-system updates if the adsorbate moves too far from the surface."""
+        if self.max_adsorbate_surface_dist is None:
+            return dr
+        natoms_list = self.batch.natoms.tolist()
+        current_dist = self._adsorbate_surface_distances(self.batch.pos)
+        if not any(d is not None for d in current_dist):
+            return dr
+        clipped = False
+        threshold = self.max_adsorbate_surface_dist
+        margin = max(self.ads_clip_margin, 0.0)
+        scale = min(self.ads_clip_scale, 1.0)
+        scale = scale if scale > 0.0 else 0.5
+        for attempt in range(self.ads_clip_attempts):
+            candidate_dist = self._adsorbate_surface_distances(
+                self.batch.pos + dr
+            )
+            violation_found = False
+            offset = 0
+            for idx, (cur_d, new_d) in enumerate(
+                zip(current_dist, candidate_dist)
+            ):
+                nat = natoms_list[idx]
+                slc = slice(offset, offset + nat)
+                offset += nat
+                if cur_d is None or new_d is None:
+                    continue
+                if cur_d >= threshold - margin:
+                    continue
+                if new_d <= threshold:
+                    continue
+                violation_found = True
+                clipped = True
+                dr[slc] = dr[slc] * scale
+            if not violation_found:
+                if clipped:
+                    logging.debug(
+                        "[LBFGS] Reduced step size to prevent adsorbate desorption."
+                    )
+                return dr
+        if clipped:
+            logging.warning(
+                "[LBFGS] Adsorbate-surface distance remained above threshold after clipping attempts."
+            )
+        return dr
 
 
 class TorchCalc:

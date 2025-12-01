@@ -52,7 +52,7 @@ from adsorbdiff.models.gemnet_oc.utils import (
 )
 
 
-@registry.register_model("gemnet_oc")
+@registry.register_model("gemnet_oc_denoising")
 class GemNetOC(BaseModel):
     """
     Arguments

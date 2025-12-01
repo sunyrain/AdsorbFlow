@@ -20,7 +20,8 @@ from adsorbdiff.utils.utils import (
     save_experiment_log,
     setup_logging,
 )
-
+import os
+os.environ['WANDB_API_KEY'] = '28acffdccf6e95ce7e4f346d3fec96439080b1dd'
 
 class Runner(submitit.helpers.Checkpointable):
     def __init__(self) -> None:

@@ -3,12 +3,12 @@ import subprocess
 import os
 
 # Link to the path with ML relaxations
-PATH = ""
+PATH = "/root/autodl-tmp/AdsorbDiff/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg1_steps30"
 
 MAX_CALCS = 200
 
 def run_vasp(path):
-    cmd = "mpirun -np 8 /opt/vasp.5.4.4.pl2/bin/vasp_std".split(" ")
+    cmd = "mpirun -np 16 /root/autodl-tmp/vasp-autodl/vasp.6.3.0/bin/vasp_std".split(" ")
     p = subprocess.Popen(cmd, cwd=path)
 
 
@@ -34,7 +34,7 @@ if __name__ == "__main__":
 
         # This is the launch command for VASP, you need VASP LICENSE to be able to run this
         # Code can be adapted for slurm or other job schedulers
-        path = f"cd {script} && mpirun -np 8 /opt/vasp.5.4.4.pl2/bin/vasp_std"
+        path = f"cd {script} && mpirun -np 8 /root/autodl-tmp/vasp-autodl/vasp.6.3.0/bin/vasp_std"
         with open("run.sh", "w") as f:
             f.write(path)
         f.close()

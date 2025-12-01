@@ -75,7 +75,7 @@ class PaiNN(BaseModel):
         direct_forces: bool = True,
         use_pbc: bool = True,
         otf_graph: bool = True,
-        num_elements: int = 83,
+        num_elements: int = 110,
         scale_file: Optional[str] = None,
     ) -> None:
         super(PaiNN, self).__init__()
@@ -482,7 +482,8 @@ class PaiNNMessage(MessagePassing):
         xh = self.x_proj(self.x_layernorm(x))
 
         # TODO(@abhshkdz): Nans out with AMP here during backprop. Debug / fix.
-        rbfh = self.rbf_proj(edge_rbf)
+        with torch.cuda.amp.autocast(enabled=False):
+            rbfh = self.rbf_proj(edge_rbf.float()).to(xh.dtype)
 
         # propagate_type: (xh: Tensor, vec: Tensor, rbfh_ij: Tensor, r_ij: Tensor)
         dx, dvec = self.propagate(

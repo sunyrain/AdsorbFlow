@@ -107,7 +107,7 @@ def warmup_lr_lambda(current_step: int, optim_config):
         raise Exception(
             "ConfigError: please define lr_milestones in steps not epochs and define warmup_steps instead of warmup_epochs"
         )
-
+    print("current_step", current_step)
     if current_step <= optim_config["warmup_steps"]:
         alpha = current_step / float(optim_config["warmup_steps"])
         return optim_config["warmup_factor"] * (1.0 - alpha) + alpha
@@ -329,6 +329,14 @@ def setup_imports(config: Optional[dict] = None) -> None:
         import_keys = ["trainers", "datasets", "models", "tasks"]
         for key in import_keys:
             for f in (project_root / "adsorbdiff" / key).rglob("*.py"):
+                # 跳过隐藏目录/文件、ipynb checkpoints、以及带连字符的临时文件
+                parts = f.parts
+                if any(p.startswith(".") for p in parts):
+                    continue
+                if ".ipynb_checkpoints" in parts:
+                    continue
+                if "-" in f.stem:
+                    continue
                 _import_local_file(f, project_root=project_root)
 
         if not skip_experimental_imports:

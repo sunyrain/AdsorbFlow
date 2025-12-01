@@ -1,4 +1,5 @@
 import os
+import pickle
 import numpy as np
 import torch
 from scipy.spatial.transform import Rotation
@@ -98,6 +99,81 @@ def axis_angle_to_matrix(axis_angle):
     return quaternion_to_matrix(axis_angle_to_quaternion(axis_angle))
 
 
+def matrix_to_axis_angle(matrix: torch.Tensor) -> torch.Tensor:
+    """Convert rotation matrices to axis-angle vectors."""
+    single = matrix.dim() == 2
+    if single:
+        matrix = matrix.unsqueeze(0)
+    rotvec = Rotation.from_matrix(matrix.detach().cpu().numpy()).as_rotvec()
+    rotvec = torch.from_numpy(rotvec).to(matrix.device, dtype=matrix.dtype)
+    if single:
+        rotvec = rotvec[0]
+    return rotvec
+
+
+def random_quaternions(count, device=None, dtype=None):
+    """Sample quaternions that are uniform on SO(3)."""
+    if dtype is None:
+        dtype = torch.float32
+    q = torch.randn(count, 4, device=device, dtype=dtype)
+    q = q / torch.linalg.norm(q, dim=-1, keepdim=True)
+    # Ensure a consistent hemisphere to avoid ambiguity during slerp.
+    q = torch.where(q[..., :1] < 0.0, -q, q)
+    return q
+
+
+def quaternion_multiply(q1, q2):
+    """Hamilton product of two quaternions (real part first)."""
+    w1, x1, y1, z1 = torch.unbind(q1, dim=-1)
+    w2, x2, y2, z2 = torch.unbind(q2, dim=-1)
+    w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+    x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+    y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
+    z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+    out = torch.stack((w, x, y, z), dim=-1)
+    return out
+
+
+def quaternion_to_axis_angle(quaternions, eps: float = 1.0e-8):
+    """Convert quaternions (real part first) to axis-angle vectors."""
+    q = quaternions / torch.linalg.norm(quaternions, dim=-1, keepdim=True)
+    q = torch.where(q[..., :1] < 0.0, -q, q)
+    xyz = q[..., 1:]
+    qw = torch.clamp(q[..., :1], -1.0, 1.0)
+    sin_theta = torch.linalg.norm(xyz, dim=-1, keepdim=True)
+    angle = 2.0 * torch.atan2(sin_theta, qw)
+    axis = xyz / torch.clamp(sin_theta, min=eps)
+    axis_angle = axis * angle
+    small = sin_theta < eps
+    if small.any():
+        axis_angle = torch.where(small, 2.0 * xyz, axis_angle)
+    return axis_angle
+
+
+def quaternion_slerp(q0, q1, t, eps: float = 1.0e-6):
+    """Spherical linear interpolation between two quaternions."""
+    q0 = q0 / torch.linalg.norm(q0, dim=-1, keepdim=True)
+    q1 = q1 / torch.linalg.norm(q1, dim=-1, keepdim=True)
+    dot = torch.sum(q0 * q1, dim=-1, keepdim=True)
+    q1 = torch.where(dot < 0.0, -q1, q1)
+    dot = torch.clamp(torch.sum(q0 * q1, dim=-1, keepdim=True), -1.0, 1.0)
+    omega = torch.acos(dot)
+    sin_omega = torch.sin(omega)
+    if t.dim() == 1:
+        t = t.unsqueeze(-1)
+    while t.dim() < q0.dim():
+        t = t.unsqueeze(-1)
+    sin_omega_safe = torch.clamp(sin_omega, min=eps)
+    coeff0 = torch.sin((1.0 - t) * omega) / sin_omega_safe
+    coeff1 = torch.sin(t * omega) / sin_omega_safe
+    result = coeff0 * q0 + coeff1 * q1
+    linear = (1.0 - t) * q0 + t * q1
+    use_linear = sin_omega.abs() < eps
+    result = torch.where(use_linear, linear, result)
+    result = result / torch.linalg.norm(result, dim=-1, keepdim=True)
+    return result
+
+
 def rigid_transform_Kabsch_3D_torch(A, B):
     # R = 3x3 rotation matrix, t = 3x1 column vector
     # This already takes residue identity into account.
@@ -186,7 +262,7 @@ def _score(exp, omega, eps, L=2000):  # score of density over SO(3)
     return dSigma / exp
 
 
-PATH = "/home/jovyan/shared-scratch/adeesh/denoising/so3_precompute/"
+PATH = "/root/autodl-tmp/AdsorbDiff/so3_precompute"
 if os.path.exists(os.path.join(PATH, "so3_omegas_array2.npy")):
     _omegas_array = np.load(os.path.join(PATH, "so3_omegas_array2.npy"))
     _cdf_vals = np.load(os.path.join(PATH, "so3_cdf_vals2.npy"))
@@ -275,7 +351,7 @@ def rotate_atoms(atoms):
             [torch.sin(zrot_rad), torch.cos(zrot_rad), 0],
             [0, 0, 1],
         ],
-        device=self.device,
+        device=atoms.device,
     )
     center = atoms.mean(dim=0)
     atoms_centered = atoms - center
@@ -290,7 +366,7 @@ def rotate_atoms(atoms):
             torch.sqrt(1 - z**2) * torch.sin(phi),
             z,
         ],
-        device=self.device,
+        device=atoms.device,
     )
 
     # Rotate atoms using the generated rotation vector
@@ -312,7 +388,7 @@ def rotate_atoms(atoms):
                 1 - 2 * rotvec[0] ** 2 - 2 * rotvec[1] ** 2,
             ],
         ],
-        device=self.device,
+        device=atoms.device,
     )
 
     center = atoms_rotated_z.mean(dim=0)
