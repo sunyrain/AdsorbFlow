@@ -6,10 +6,10 @@ import numpy as np
 import glob
 
 # Paths
-base_path = "/root/autodl-tmp/AdsorbDiff"
+base_path = "/root/autodl-tmp/AdsorbFlow"
 ref_path = os.path.join(base_path, "oc20_dense_mappings/oc20dense_ref_energies.pkl")
 target_path = os.path.join(base_path, "oc20_dense_mappings/oc20dense_targets.pkl")
-vasp_base_dir = "/root/autodl-tmp/AdsorbDiff/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg1_steps30/vasp"
+vasp_base_dir = "/root/autodl-tmp/AdsorbFlow/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg1_steps30/vasp"
 
 # Load data
 print("Loading reference energies...")

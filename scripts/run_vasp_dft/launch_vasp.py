@@ -3,7 +3,7 @@ import subprocess
 import os
 
 # Link to the path with ML relaxations
-PATH = "/root/autodl-tmp/AdsorbDiff/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg1_steps30"
+PATH = "/root/autodl-tmp/AdsorbFlow/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg1_steps30"
 
 MAX_CALCS = 200
 

@@ -96,35 +96,36 @@ class FlowTorch:
         bidx = batch.batch
         # 参考位置（若有 pos_relaxed 就用它）
         pos_ref = batch.pos_relaxed if hasattr(batch, "pos_relaxed") and batch.pos_relaxed is not None else batch.pos
-        ads_center_ref = scatter(pos_ref[ads_mask], bidx[ads_mask], dim=0, reduce="mean")  # (B,3)
+        # ads_center_ref = scatter(pos_ref[ads_mask], bidx[ads_mask], dim=0, reduce="mean")  # (B,3)
+        
+        # Use Center of Mass instead of Geometric Center
+        ads_atomic_numbers = batch.atomic_numbers[ads_mask]
+        masses = torch.tensor(ase.data.atomic_masses[ads_atomic_numbers.long().cpu().numpy()], device=pos_ref.device, dtype=pos_ref.dtype)
+        weighted_pos = pos_ref[ads_mask] * masses.unsqueeze(-1)
+        sum_weighted_pos = scatter(weighted_pos, bidx[ads_mask], dim=0, dim_size=B, reduce="sum")
+        sum_masses = scatter(masses, bidx[ads_mask], dim=0, dim_size=B, reduce="sum")
+        ads_center_ref = sum_weighted_pos / sum_masses.unsqueeze(-1)
+
         # 以参考 COM 居中后的吸附体原子坐标（旋转作用在这上面，避免累积漂移）
         ads_pos_ref_centered = pos_ref[ads_mask] - ads_center_ref[bidx[ads_mask]]
 
-        # [DISABLED] Fix: Ensure initial Z is safe (match training distribution)
-        # The following logic forces the adsorbate to a hardcoded height (slab_max + 1.2A),
-        # which destroys the Z-information in the validation set and is physically arbitrary.
-        # We disable it to respect the input initialization (e.g. from heuristic or validation set).
-        # -----------------------------------------------------------------------------------
-        # slab_mask = (tags != 2)
-        # if slab_mask.any():
-        #     # Compute max Z of slab for each batch
-        #     slab_z_max = scatter(pos_ref[slab_mask, 2], bidx[slab_mask], dim=0, reduce="max")
-        #     # Shift ads_center_ref Z to be slab_z_max + 2.0
-        #     safe_z = slab_z_max + 1.2
-        #     ads_center_ref[:, 2] = safe_z
-        #     logging.info("[FlowTorch] Adjusted initial adsorbate Z to slab_max_z + 2.0 Å to match training distribution.")
-        # -----------------------------------------------------------------------------------
 
         # ---------------- NEW: 训练一致的“噪声锚点”初始化 ----------------
         # 噪声尺度可从 flow_opt 读，给出与训练一致的默认值
         tr_sigma  = float(self.flow_opt.get("tr_sigma", 2.0))
         rot_sigma = float(self.flow_opt.get("rot_sigma", 1.0))
+        allow_z = bool(self.flow_opt.get("allow_z", True))  # 默认允许 z 方向平移
 
         # 先验上的平移噪声：只在 XY，有 PBC wrap
         eps_tr = torch.zeros_like(ads_center_ref).normal_() * tr_sigma
         # eps_tr[:, 2] = 0.0
         tr_sigma_z_scale = float(self.flow_opt.get("tr_sigma_z_scale", 0.3))
-        eps_tr[:, 2] *= tr_sigma_z_scale
+        
+        if allow_z:
+            eps_tr[:, 2] *= tr_sigma_z_scale
+        else:
+            eps_tr[:, 2] = 0.0
+
         eps_tr = _pbc_wrap_xy(eps_tr, batch)  # wrap XY 到最近像
         # 先验上的旋转噪声：轴角
         eps_rot = torch.stack(
@@ -135,6 +136,51 @@ class FlowTorch:
         # 当前“锚点状态”：与训练 forward 中的 (ztr, zrot) 语义一致
         cur_ads_anchor = ads_center_ref + eps_tr           # (B,3)
         cur_rot = eps_rot.clone()                          # (B,3)
+        
+        # --- Overlap Check & Lift (Initial Placement) ---
+        # Check if the initial random placement (t=1) causes overlap with the slab.
+        # If so, lift the adsorbate.
+        # If Z-axis is ignored (allow_z=False), lift by a fixed amount (1.0A) if overlap occurs.
+        
+        # 1. Reconstruct initial adsorbate positions (t=1)
+        # Apply rotation R to relative positions
+        R_init = axis_angle_to_matrix(cur_rot).float() # (B, 3, 3)
+        ads_idx = torch.where(ads_mask)[0]
+        sys_ids = bidx[ads_idx]
+        
+        # ads_pos_ref_centered is (N_ads, 3)
+        # We need to apply R[sys_ids] to ads_pos_ref_centered
+        rel_rotated = torch.bmm(R_init[sys_ids], ads_pos_ref_centered.unsqueeze(-1)).squeeze(-1) # (N_ads, 3)
+        
+        # Proposed Z positions of adsorbate atoms
+        prop_ads_z = cur_ads_anchor[sys_ids, 2] + rel_rotated[:, 2]
+        
+        # 2. Find min Z of adsorbate per batch
+        ads_min_z = scatter(prop_ads_z, sys_ids, dim=0, dim_size=B, reduce="min")
+        
+        # 3. Find max Z of slab per batch
+        slab_mask = (tags != 2)
+        if slab_mask.any():
+            slab_z = pos_ref[slab_mask, 2]
+            slab_batch = bidx[slab_mask]
+            slab_max_z = scatter(slab_z, slab_batch, dim=0, dim_size=B, reduce="max")
+            
+            # 4. Check Overlap
+            # Threshold: 0.5 A separation
+            overlap_amount = (slab_max_z + 0.5) - ads_min_z
+            lift_mask = overlap_amount > 0
+            
+            if not allow_z:
+                # Unconditional lift of 1.0 A if Z is ignored
+                cur_ads_anchor[:, 2] += 1.0
+            elif lift_mask.any():
+                # Lift to resolve overlap
+                lift_val = torch.where(lift_mask, overlap_amount, torch.zeros_like(overlap_amount))
+                
+                # Apply lift to cur_ads_anchor (which effectively updates eps_tr)
+                cur_ads_anchor[:, 2] += lift_val
+                # logging.info(f"[FlowTorch] Lifted {lift_mask.sum()} samples due to overlap.")
+
         # ---------------------------------------------------------------
 
         # --- 构造第一帧坐标（避免 dtr_xy / zrot == 0 的静止） ---
@@ -153,10 +199,10 @@ class FlowTorch:
         flow_type = str(self.flow_opt.pop("flow_type", "fm"))
         if flow_type != "fm":
             raise ValueError("FlowTorch supports only flow_type='fm'.")
-        allow_z_tr = bool(self.flow_opt.get("allow_z_tr", True))  # 默认允许 z 方向平移
+        # allow_z moved to top
         write_every = int(self.flow_opt.get("write_every", 5))  # 0 表示只写末帧
 
-        print(f"[FlowTorch] num_steps={num_steps}, cfg_scale={cfg_scale}, allow_z_tr={allow_z_tr}, write_every={write_every}")
+        print(f"[FlowTorch] num_steps={num_steps}, cfg_scale={cfg_scale}, allow_z={allow_z}, write_every={write_every}")
         # --- prepare trajectories ---
         trajectories = None
         if self.traj_dir:
@@ -191,11 +237,14 @@ class FlowTorch:
             cond_base.t = torch.full((B, 1), t_mid, device=self.device)
             cond_base.ads_center = ads_center_ref
             cond_base.energy = torch.zeros(B, device=self.device)
+            cond_base.allow_z = allow_z
 
             cond_co = cond_base.clone()
             cond_co.cfg_conditioned = torch.ones(B, dtype=torch.bool, device=self.device)
+            cond_co.allow_z = allow_z
             cond_un = cond_base.clone()
             cond_un.cfg_conditioned = torch.zeros(B, dtype=torch.bool, device=self.device)
+            cond_un.allow_z = allow_z
             # ---------------------------------------------------------------------
 
             out_un = base_model(cond_un, mode="fm")
@@ -248,7 +297,7 @@ class FlowTorch:
             if v_tr.shape[-1] == 2:
                 v_tr = torch.cat([v_tr, torch.zeros(B, 1, device=self.device)], dim=-1)
             # 不允许 z 平移时强制置 0
-            if not allow_z_tr:
+            if not allow_z:
                 v_tr[:, 2] = 0.0
 
             # --------- CHANGED: 用“锚点状态”进行 ODE 积分 & PBC wrap ----------

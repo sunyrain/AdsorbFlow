@@ -12,7 +12,7 @@ from adsorbdiff.datasets.lmdb_dataset import LmdbDataset
 def check_z_distribution():
     # Config for the dataset
     config = {
-        "src": "/root/autodl-tmp/AdsorbDiff/val_nonrelaxed_update",
+        "src": "/root/autodl-tmp/AdsorbFlow/val_nonrelaxed_update",
         "train_on_oc20_total_energies": False
     }
     

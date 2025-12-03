@@ -80,4 +80,4 @@ def check_z_distances(directory):
 
 if __name__ == "__main__":
     # Check the '0' directory as identified in the file list
-    check_z_distances("/root/autodl-tmp/AdsorbDiff/grid_search_runs/2025-11-19-09-44-32-debug-head_epoch0116_valloss2.2769/cfg2_steps30/0/relaxations")
+    check_z_distances("/root/autodl-tmp/AdsorbFlow/grid_search_runs/2025-11-19-09-44-32-debug-head_epoch0116_valloss2.2769/cfg2_steps30/0/relaxations")

@@ -225,9 +225,9 @@ def parse_sid_from_fname(fname: str) -> str:
 # -----------------------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--traj", default="/root/autodl-tmp/AdsorbDiff/71_7114_7_heur18.traj")
-    ap.add_argument("--ckpt", default="/root/autodl-tmp/AdsorbDiff/checkpoints/2025-09-27-08-53-20/checkpoint.pt")
-    ap.add_argument('--tags-pkl', default="/root/autodl-tmp/AdsorbDiff/oc20dense_tags.pkl")
+    ap.add_argument("--traj", default="/root/autodl-tmp/AdsorbFlow/71_7114_7_heur18.traj")
+    ap.add_argument("--ckpt", default="/root/autodl-tmp/AdsorbFlow/checkpoints/2025-09-27-08-53-20/checkpoint.pt")
+    ap.add_argument('--tags-pkl', default="/root/autodl-tmp/AdsorbFlow/oc20dense_tags.pkl")
     ap.add_argument('--steps', type=int, default=5)
     ap.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu')
     ap.add_argument('--seed', type=int, default=0)

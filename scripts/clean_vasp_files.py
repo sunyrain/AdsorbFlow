@@ -32,7 +32,7 @@ def clean_directory(root_dir):
 
 if __name__ == "__main__":
     # Target directories
-    base_dir = "/root/autodl-tmp/AdsorbDiff/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg3_steps30"
+    base_dir = "/root/autodl-tmp/AdsorbFlow/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg3_steps30"
     
     # Clean main vasp folder
     clean_directory(os.path.join(base_dir, "vasp"))

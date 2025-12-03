@@ -195,7 +195,7 @@ def ml_flow(
                 {
                     "num_steps": 300,
                     "cfg_scale": 5.0,
-                    "allow_z_tr": False,      # 是否允许 z 向平移
+                    "allow_z": False,      # 是否允许 z 向平移
                     "write_every": 0,         # >0 则每隔 write_every 步写一帧
                     "traj_dir": "...",        # （可选）也可放在 flow_opt 内
                 }

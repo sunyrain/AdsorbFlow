@@ -6,10 +6,10 @@ import glob
 import numpy as np
 
 # Paths
-base_path = "/root/autodl-tmp/AdsorbDiff"
+base_path = "/root/autodl-tmp/AdsorbFlow"
 target_path = os.path.join(base_path, "oc20_dense_mappings/oc20dense_targets.pkl")
-vasp_base_dir = "/root/autodl-tmp/AdsorbDiff/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg3_steps30/vasp"
-ref_base_dir = "/root/autodl-tmp/AdsorbDiff/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg3_steps30/vasp_refs"
+vasp_base_dir = "/root/autodl-tmp/AdsorbFlow/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg3_steps30/vasp"
+ref_base_dir = "/root/autodl-tmp/AdsorbFlow/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg3_steps30/vasp_refs"
 
 print("Loading targets...")
 with open(target_path, "rb") as f:

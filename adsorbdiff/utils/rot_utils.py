@@ -262,7 +262,7 @@ def _score(exp, omega, eps, L=2000):  # score of density over SO(3)
     return dSigma / exp
 
 
-PATH = "/root/autodl-tmp/AdsorbDiff/so3_precompute"
+PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "so3_precompute")
 if os.path.exists(os.path.join(PATH, "so3_omegas_array2.npy")):
     _omegas_array = np.load(os.path.join(PATH, "so3_omegas_array2.npy"))
     _cdf_vals = np.load(os.path.join(PATH, "so3_cdf_vals2.npy"))

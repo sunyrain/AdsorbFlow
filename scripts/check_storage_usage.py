@@ -64,5 +64,5 @@ def analyze_directory(path):
 
 if __name__ == "__main__":
     # Use a known existing directory
-    sample_dir = "/root/autodl-tmp/AdsorbDiff/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg3_steps30/vasp/12_1990_4_0"
+    sample_dir = "/root/autodl-tmp/AdsorbFlow/grid_search_runs"
     analyze_directory(sample_dir)

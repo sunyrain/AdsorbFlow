@@ -14,6 +14,7 @@ import torch
 import torch_geometric
 from torch_scatter import scatter
 from tqdm import tqdm
+from ase.data import atomic_masses
 
 from adsorbdiff.modules.evaluator import Evaluator
 from adsorbdiff.modules.exponential_moving_average import ExponentialMovingAverage
@@ -188,6 +189,7 @@ class MeanFlowTrainer(OCPTrainer):
         self.time_sampl = flow_cfg.get("time_sampl", "uniform")
         self.tr_sigma   = float(flow_cfg.get("tr_sigma", 2.0))
         self.tr_sigma_z_scale = float(flow_cfg.get("tr_sigma_z_scale", 0.3))
+        self.allow_z = _parse_bool(flow_cfg.get("allow_z", True))
         self.rot_sigma  = float(flow_cfg.get("rot_sigma", 1.0))
         # lift_height removed as Z-axis is unlocked
         fm_regression = str(flow_cfg.get("fm_regression", "delta_clean")).lower()
@@ -307,7 +309,14 @@ class MeanFlowTrainer(OCPTrainer):
         tags = batch.tags
         ads_mask = (tags == 2)
         
-        ads_center = scatter(x0[ads_mask], batch.batch[ads_mask], dim=0, reduce="mean")
+        # ads_center = scatter(x0[ads_mask], batch.batch[ads_mask], dim=0, reduce="mean")
+        # Use Center of Mass instead of Geometric Center
+        ads_atomic_numbers = batch.atomic_numbers[ads_mask]
+        masses = torch.tensor(atomic_masses[ads_atomic_numbers.long().cpu().numpy()], device=x0.device, dtype=x0.dtype)
+        weighted_pos = x0[ads_mask] * masses.unsqueeze(-1)
+        sum_weighted_pos = scatter(weighted_pos, batch.batch[ads_mask], dim=0, dim_size=B, reduce="sum")
+        sum_masses = scatter(masses, batch.batch[ads_mask], dim=0, dim_size=B, reduce="sum")
+        ads_center = sum_weighted_pos / sum_masses.unsqueeze(-1)
 
         if self.time_sampl == "uniform":
             t = torch.rand(B, device=device)
@@ -319,7 +328,10 @@ class MeanFlowTrainer(OCPTrainer):
         eps_tr = torch.zeros_like(ads_center).normal_() * self.tr_sigma
         # Unlock Z-axis in noise generation
         # eps_tr[:, -1] = 0.0
-        eps_tr[:, 2] *= self.tr_sigma_z_scale
+        if self.allow_z:
+            eps_tr[:, 2] *= self.tr_sigma_z_scale
+        else:
+            eps_tr[:, 2] = 0.0
         eps_tr = _pbc_wrap_xy(eps_tr, batch)
         clip_flags = {}
         if self.tr_clip is not None:
@@ -425,6 +437,53 @@ class MeanFlowTrainer(OCPTrainer):
                 omega = omega * scale[:, None]
                 clip_flags["rotation"] = int(over_rot.sum().item())
 
+        # --- Overlap Check & Lift (Initial Placement) ---
+        # Check if the initial random placement (t=1) causes overlap with the slab.
+        # If so, lift the adsorbate.
+        # If Z-axis is ignored (tr_sigma_z_scale approx 0), lift by a fixed amount (1.0A) if overlap occurs.
+        
+        # 1. Reconstruct initial adsorbate positions (t=1)
+        # Apply rotation R to relative positions
+        R_init = rot_utils.axis_angle_to_matrix(omega) # (B, 3, 3)
+        R_atoms = R_init[ads_batch] # (N_ads, 3, 3)
+        rel_rotated = torch.bmm(R_atoms, rel_star.unsqueeze(-1)).squeeze(-1) # (N_ads, 3)
+        
+        # Proposed Z positions of adsorbate atoms
+        # eps_tr is the displacement from ads_center at t=1
+        prop_ads_z = (ads_center[ads_batch] + eps_tr[ads_batch])[:, 2] + rel_rotated[:, 2]
+        
+        # 2. Find min Z of adsorbate per batch
+        ads_min_z = scatter(prop_ads_z, ads_batch, dim=0, dim_size=B, reduce="min")
+        
+        # 3. Find max Z of slab per batch
+        slab_mask = (tags != 2)
+        if slab_mask.any():
+            slab_z = x0[slab_mask, 2]
+            slab_batch = batch.batch[slab_mask]
+            # Initialize with a safe low value
+            slab_max_z = scatter(slab_z, slab_batch, dim=0, dim_size=B, reduce="max")
+            # Handle batches with no slab atoms (unlikely but possible in some datasets)
+            # If slab_max_z is 0 (default for scatter if empty), it might be wrong if slab is below 0.
+            # But usually slab is centered or at 0. Let's assume valid slab exists.
+            
+            # 4. Check Overlap
+            # Threshold: 0.5 A separation
+            overlap_amount = (slab_max_z + 0.5) - ads_min_z
+            lift_mask = overlap_amount > 0
+            
+            # If Z is effectively frozen/ignored (allow_z is False), use fixed lift UNCONDITIONALLY
+            ignore_z = not self.allow_z
+            
+            if ignore_z:
+                # Unconditional lift of 1.0 A
+                eps_tr[:, 2] += 1.0
+            elif lift_mask.any():
+                # Lift to resolve overlap
+                lift_val = torch.where(lift_mask, overlap_amount, torch.zeros_like(overlap_amount))
+                # Apply lift to eps_tr (since eps_tr defines the displacement)
+                eps_tr[:, 2] += lift_val
+                # logging.debug(f"[MeanFlowTrainer] Lifted {lift_mask.sum()} samples due to overlap.")
+
         tr_sched = t
         ztr = ads_center + tr_sched[:, None] * eps_tr
         rot_sched = t
@@ -445,13 +504,17 @@ class MeanFlowTrainer(OCPTrainer):
         disp_full_wrapped = _pbc_wrap_xy(disp_full, batch)
         pos_t[ads_mask] = x0[ads_mask] + disp_full_wrapped[ads_mask]
 
-        translation_total = scatter(
-            disp_full_wrapped[ads_mask],
-            ads_batch,
-            dim=0,
-            dim_size=B,
-            reduce="mean",
-        )
+        # translation_total = scatter(
+        #     disp_full_wrapped[ads_mask],
+        #     ads_batch,
+        #     dim=0,
+        #     dim_size=B,
+        #     reduce="mean",
+        # )
+        # Use Center of Mass displacement
+        weighted_disp = disp_full_wrapped[ads_mask] * masses.unsqueeze(-1)
+        sum_weighted_disp = scatter(weighted_disp, ads_batch, dim=0, dim_size=B, reduce="sum")
+        translation_total = sum_weighted_disp / sum_masses.unsqueeze(-1)
         rotation_total = zrot
 
         translation_total = _pbc_wrap_xy(translation_total, batch)
@@ -474,6 +537,8 @@ class MeanFlowTrainer(OCPTrainer):
             v_rot_target[rot_mask] = rotation_total[rot_mask] / rot_safe[rot_mask, None]
         # Unlock Z-axis in target velocity
         # v_tr_target[:, 2] = 0.0
+        if not self.allow_z:
+            v_tr_target[:, 2] = 0.0
         v_tr_target = torch.nan_to_num(v_tr_target)
         v_rot_target = torch.nan_to_num(v_rot_target)
         batch.t = t[:, None]
@@ -489,6 +554,7 @@ class MeanFlowTrainer(OCPTrainer):
             batch._rot_reflection_choice = None
         batch.v_tr_target = v_tr_target
         batch.v_rot_target = v_rot_target
+        batch.allow_z = self.allow_z
         batch.tr_sched = tr_sched[:, None]
         batch.tr_sched_deriv = tr_sched_deriv[:, None]
         batch.rot_sched = rot_sched[:, None]
@@ -1773,7 +1839,7 @@ class MeanFlowTrainer(OCPTrainer):
                                     "num_steps": steps,
                                     "cfg_scale": cfg,
                                     "time_sampl": self.time_sampl,
-                                    "allow_z_tr": True,
+                                    "allow_z": self.allow_z,
                                 }
                                 
                                 # Run inference
@@ -1795,7 +1861,23 @@ class MeanFlowTrainer(OCPTrainer):
                                 gen_pos = final_batch.pos
                                 ref_pos = inf_batch.pos_relaxed
                                 diff = gen_pos[ads_mask] - ref_pos[ads_mask]
-                                dist = torch.norm(diff, dim=-1)
+
+                                # Wrap diff using PBC (XY only)
+                                diff_wrapped = torch.zeros_like(diff)
+                                ads_batch = inf_batch.batch[ads_mask]
+                                cell = inf_batch.cell.double()
+                                B_size = int(inf_batch.natoms.size(0))
+                                
+                                for b in range(B_size):
+                                    mask = (ads_batch == b)
+                                    if not mask.any(): continue
+                                    frac = torch.linalg.solve(cell[b].t(), diff[mask].double().t()).t()
+                                    frac[..., :2] = ((frac[..., :2] + 0.5) % 1.0) - 0.5
+                                    cart = (frac.float() @ cell[b].float())
+                                    cart[..., 2] = diff[mask][..., 2]
+                                    diff_wrapped[mask] = cart
+
+                                dist = torch.norm(diff_wrapped, dim=-1)
                                 
                                 key = f"cfg{cfg}_step{steps}"
                                 grid_stats[key]["sum"] += dist.sum().item()

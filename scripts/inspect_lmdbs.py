@@ -38,7 +38,7 @@ def inspect_lmdb(path):
     env.close()
 
 print("--- val_nonrelaxed_update ---")
-inspect_lmdb("/root/autodl-tmp/AdsorbDiff/val_nonrelaxed_update/data.0000.lmdb")
+inspect_lmdb("/root/autodl-tmp/AdsorbFlow/val_nonrelaxed_update/data.0000.lmdb")
 
 print("\n--- valood50_R1I0.1 ---")
-inspect_lmdb("/root/autodl-tmp/AdsorbDiff/valood50_R1I0.1/data.0000.lmdb")
+inspect_lmdb("/root/autodl-tmp/AdsorbFlow/valood50_R1I0.1/data.0000.lmdb")

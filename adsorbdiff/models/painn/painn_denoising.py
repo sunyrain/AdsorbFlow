@@ -40,6 +40,7 @@ from torch import nn
 import torch.nn.functional as F
 from torch_geometric.nn import MessagePassing
 from torch_scatter import scatter, segment_coo, segment_csr
+from ase.data import atomic_masses
 
 from adsorbdiff.utils.registry import registry
 from adsorbdiff.utils.utils import conditional_grad
@@ -698,15 +699,30 @@ class PaiNN(BaseModel):
         # Unlock Z-axis to allow vertical relaxation
         # if translation.size(-1) >= 3:
         #     translation[:, 2] = 0.0
+        
+        allow_z = getattr(data, "allow_z", True)
+        # Handle if it's a tensor (e.g. from collation or just assigned)
+        if isinstance(allow_z, torch.Tensor):
+            allow_z = bool(allow_z.item()) if allow_z.numel() == 1 else True 
+        
+        if not allow_z and translation.size(-1) >= 3:
+            translation[:, 2] = 0.0
 
         # === 2. Rotation 部分 (关键修改: 引入叉积聚合以匹配轴矢量宇称) ===
         if forces2 is not None:
             ads_forces2 = forces2[ads_mask]
             
-            # (A) 计算吸附剂中心 (Center of Geometry/Mass)
+            # (A) 计算吸附剂中心 (Center of Mass)
             ads_pos = data.pos[ads_mask]
             ads_batch = batch_idx[ads_mask]
-            centers = scatter(ads_pos, ads_batch, dim=0, dim_size=batch_size, reduce="mean")
+            
+            # Use Center of Mass
+            ads_an = data.atomic_numbers[ads_mask].long().cpu().numpy()
+            masses = torch.tensor(atomic_masses[ads_an], device=ads_pos.device, dtype=ads_pos.dtype)
+            weighted_pos = ads_pos * masses.unsqueeze(-1)
+            sum_weighted_pos = scatter(weighted_pos, ads_batch, dim=0, dim_size=batch_size, reduce="sum")
+            sum_masses = scatter(masses, ads_batch, dim=0, dim_size=batch_size, reduce="sum")
+            centers = sum_weighted_pos / sum_masses.unsqueeze(-1)
             
             # (B) 计算相对坐标 r (relative position)
             # centers[ads_batch] 将中心坐标广播回每个原子
@@ -1007,7 +1023,7 @@ class GatedEquivariantBlock(nn.Module):
     _instances: List["GatedEquivariantBlock"] = []
     _debug_enabled = bool(int(os.getenv("PAINN_GEBLOCK_DEBUG", "0")))
     _norm_warn_limit = float(os.getenv("PAINN_GEBLOCK_NORM_LIMIT", "1.0e3"))
-    _dump_dir = os.getenv("PAINN_GEBLOCK_DUMP_DIR", "/root/autodl-tmp/AdsorbDiff/pt")
+    _dump_dir = os.getenv("PAINN_GEBLOCK_DUMP_DIR", "/root/autodl-tmp/AdsorbFlow/pt")
     _topk = max(int(os.getenv("PAINN_GEBLOCK_TOPK", "3")), 0)
     _trace_full = bool(int(os.getenv("PAINN_GEBLOCK_TRACE_ALL", "1")))
     _peer_trace_limit = max(int(os.getenv("PAINN_GEBLOCK_PEER_LIMIT", "2")), 0)

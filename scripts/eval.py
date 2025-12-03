@@ -119,6 +119,18 @@ def get_success_from_trajs_rewrite(traj_path, dft_targets):
     with open(f"{traj_path}/anomalous_structures_new.pkl", "wb") as f:
         pickle.dump(dict(anom_dict), f)
 
+    # Also save as readable text
+    anomaly_labels = ["Dissociated", "Desorbed", "Surface changed", "Intercalated"]
+    with open(f"{traj_path}/anomalous_structures_new.txt", "w") as f:
+        f.write(f"{'SID':<30} | {'FID':<5} | Anomalies\n")
+        f.write("-" * 80 + "\n")
+        for sid, fid_dict in anom_dict.items():
+            for fid, anom_vec in fid_dict.items():
+                anom_indices = np.where(anom_vec)[0]
+                anom_types = [anomaly_labels[i] for i in anom_indices]
+                anom_str = ", ".join(anom_types)
+                f.write(f"{sid:<30} | {fid:<5} | {anom_str}\n")
+
     with open(f"{traj_path}/success_new.txt", "w") as f:
         f.write(str(success_rate * 100.0))
 
@@ -702,7 +714,7 @@ def get_dft_data(targets):
         final_dft_data[system] = min(list(dft_data[system].values()))
 
     with open(
-        "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_targets.pkl",
+        "/root/autodl-tmp/AdsorbFlow/oc20_dense_mappings/oc20dense_targets.pkl",
         "wb",
     ) as f:
         pickle.dump(final_dft_data, f)
@@ -973,17 +985,17 @@ if __name__ == "__main__":
     # traj_path = "/home/jovyan/shared-scratch/adeesh/denoising/overfit_sde/pretrain-bysigma_lmdbcorr2-overfit_std0.1-10_numstep50_sample1"
     # traj_path = "/home/jovyan/shared-scratch/adeesh/denoising/val44_baseline/noisybfgs/val44_std-schedule1_xyads_wrandrots_NS10"
     # traj_path = "/home/jovyan/shared-scratch/adeesh/denoising/vasp/gnoc/rand1_I1"
-    traj_path = "/root/autodl-tmp/AdsorbDiff/0/relaxations"
+    traj_path = "/root/autodl-tmp/AdsorbFlow/0/relaxations"
     # traj_path = "/home/jovyan/shared-scratch/adeesh/denoising/valood_baseline/R1I0.1"
     # traj_path = "/home/jovyan/shared-scratch/adeesh/denoising/val44_baseline/w_rot/is2rs_conditional/relaxations"
     print(traj_path.split("/")[-1])
 
     npz_path = "/home/jovyan/shared-scratch/adeesh/denoising/lmdbs/randheur100_I0.1_fmax0.03/eq2_23M_2M/results/2023-10-13-16-53-20/s2ef_predictions.npz"
     # get DFT targets
-    dft_target_path = "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_targets.pkl"
+    dft_target_path = "/root/autodl-tmp/AdsorbFlow/oc20_dense_mappings/oc20dense_targets.pkl"
     if not Path(dft_target_path).exists():
         with open(
-            "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_targets.pkl",
+            "/root/autodl-tmp/AdsorbFlow/oc20_dense_mappings/oc20dense_targets.pkl",
             "rb",
         ) as f:
             dft_targets = pickle.load(f)
@@ -993,13 +1005,13 @@ if __name__ == "__main__":
             dft_targets = pickle.load(f)
     # dft_target_pos_path = "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/dft_val_minE_pos.pkl"
     # tag_path = (
-    #     "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_tags.pkl"
+    #     "/root/autodl-tmp/AdsorbFlow/oc20_dense_mappings/oc20dense_tags.pkl"
     # )
     # with open(os.path.join(tag_path), "rb") as h:
     #     tags_map = pickle.load(h)
     # if not Path(dft_target_pos_path).exists():
     #     with open(
-    #         "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_targets.pkl",
+    #         "/root/autodl-tmp/AdsorbFlow/oc20_dense_mappings/oc20dense_targets.pkl",
     #         "rb",
     #     ) as f:
     #         dft_targets = pickle.load(f)

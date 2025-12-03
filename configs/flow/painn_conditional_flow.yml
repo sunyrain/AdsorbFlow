@@ -1,11 +1,11 @@
 trainer: adsorbdiff.trainers.meanflow_trainer.MeanFlowTrainer
 
 dataset:
-  - src:  /root/autodl-tmp/AdsorbDiff/train_split
+  - src:  /root/autodl-tmp/AdsorbFlow/train_split
   #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/train
   #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs/train_oc20dense_rs_overfit
     normalize_labels: False
-  - src: /root/autodl-tmp/AdsorbDiff/val_split
+  - src: /root/autodl-tmp/AdsorbFlow/val_split
     normalize_labels: False
 
 logger:
@@ -19,7 +19,7 @@ task:
   relaxation_steps: 100
   relaxation_fmax: 0.01
   relax_dataset: 
-        src: /root/autodl-tmp/AdsorbDiff/val_nonrelaxed_update
+        src: /root/autodl-tmp/AdsorbFlow/val_nonrelaxed_update
         #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_corr/train_oc20dense_rs
         #src: /home/jovyan/shared-scratch/adeesh/denoising/com_denoising/com-xy_std0.01-10_numstep50x10_lr1.e-4_allcorr/final_struct_lmdb
         #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/val
@@ -30,7 +30,7 @@ task:
         alpha: 70.0
         cfg_scale: 2.0 
         #traj_dir: /home/jovyan/shared-scratch/adeesh/denoising/com_sde/bysigma_lmdbcorr_std0.1-10_numstep100_sample1
-        traj_dir: /root/autodl-tmp/AdsorbDiff/relax_opt
+        traj_dir: /root/autodl-tmp/AdsorbFlow/relax_opt
   primary_metric: loss
 hide_eval_progressbar: False
 
@@ -51,8 +51,8 @@ model:
   flow_head_scale: 5.0
 
 optim:
-  batch_size:                   4        # 6
-  eval_batch_size:              4         # 6
+  batch_size:                   8        # 6
+  eval_batch_size:              8         # 6
   grad_accumulation_steps:      1         # gradient accumulation: effective batch size = `grad_accumulation_steps` * `batch_size` * (num of GPUs)
   load_balancing: atoms
   num_workers: 2
@@ -86,6 +86,7 @@ optim:
     path: rectified           # 先用直线/测地插值
     time_sampl: uniform       # 或 cosine
     tr_sigma: 3         # XY 噪声尺度（按数据再调）
+    allow_z: True       # 是否允许 Z 方向平移
     tr_sigma_z_scale: 0.3 # Z 轴噪声缩放因子 (1.0 = 与 XY 各向同性)
     rot_sigma: 1           # 轴角噪声尺度（弧度）
     tr_clip: 15               # Translation clip

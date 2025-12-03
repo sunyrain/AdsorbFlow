@@ -11,6 +11,7 @@ Example:
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 from typing import Dict, Iterable, Optional
 
@@ -18,25 +19,17 @@ import ase.io
 import numpy as np
 from ase import Atoms
 
+import sys
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
 from adsorbdiff.datasets.lmdb_dataset import LmdbDataset
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Convert Flow/relaxation .traj files to .xyz for OVITO")
     parser.add_argument(
-        "--flow-dir",
-        required=True,
+        "run_dir",
         help="Directory containing Flow output .traj files",
-    )
-    parser.add_argument(
-        "--relax-dir",
-        required=True,
-        help="Directory containing relaxation .traj files",
-    )
-    parser.add_argument(
-        "--output",
-        required=True,
-        help="Destination directory for exported XYZ files",
     )
     parser.add_argument(
         "--sids",
@@ -51,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--lmdb",
-        default=None,
+        default="val_nonrelaxed_update",
         help="Optional LMDB directory containing the initial structures for comparison",
     )
     parser.add_argument(
@@ -63,6 +56,21 @@ def parse_args() -> argparse.Namespace:
         "--format",
         default="extxyz",
         help="ASE-supported output format (default: extxyz)",
+    )
+    parser.add_argument(
+        "--ckpt-label",
+        default="",
+        help="Optional label for the checkpoint used (e.g. 'epoch50')",
+    )
+    parser.add_argument(
+        "--cfg",
+        default="",
+        help="Optional CFG scale to include in filename (e.g. '5.0')",
+    )
+    parser.add_argument(
+        "--steps",
+        default="",
+        help="Optional step count to include in filename (e.g. '50')",
     )
     return parser.parse_args()
 
@@ -136,9 +144,16 @@ def export_single(traj_path: Path, out_path: Path, fmt: str, single_flow: bool =
 
 def main() -> None:
     args = parse_args()
-    flow_dir = Path(args.flow_dir).resolve()
-    relax_dir = Path(args.relax_dir).resolve()
-    out_dir = Path(args.output).resolve()
+    flow_dir = Path(args.run_dir).resolve()
+    relax_dir = flow_dir / "relaxations"
+
+    try:
+        rel_path = flow_dir.relative_to(Path.cwd())
+        out_name = str(rel_path).replace("/", "_")
+    except ValueError:
+        out_name = flow_dir.name
+
+    out_dir = Path("exports") / out_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if not flow_dir.exists():
@@ -149,6 +164,32 @@ def main() -> None:
     sids = args.sids
     flow_single = args.single_flow_frame
     fmt = args.format
+    ext = "xyz" if fmt == "extxyz" else fmt
+
+    # Infer metadata from path if not provided
+    cfg_val = args.cfg
+    steps_val = args.steps
+    
+    if not cfg_val or not steps_val:
+        path_str = str(flow_dir)
+        if not cfg_val:
+            m = re.search(r"cfg([0-9\.]+)", path_str)
+            if m: cfg_val = m.group(1)
+        if not steps_val:
+            m = re.search(r"steps([0-9]+)", path_str)
+            if m: steps_val = m.group(1)
+
+    # Construct filename suffix from metadata
+    meta_parts = []
+    if args.ckpt_label:
+        meta_parts.append(args.ckpt_label)
+    if cfg_val:
+        meta_parts.append(f"cfg{cfg_val}")
+    if steps_val:
+        meta_parts.append(f"steps{steps_val}")
+    
+    meta_suffix = "_" + "_".join(meta_parts) if meta_parts else ""
+
     initial_dir = Path(args.initial_dir).resolve() if args.initial_dir else None
     initial_cache: Dict[str, Atoms] = {}
 
@@ -168,9 +209,9 @@ def main() -> None:
             print(f"[warn] relaxation traj missing, skipping {sid}")
             continue
 
-        flow_out = out_dir / f"{sid}_flow.{fmt if fmt != 'extxyz' else 'xyz'}"
-        relax_out = out_dir / f"{sid}_relax.{fmt if fmt != 'extxyz' else 'xyz'}"
-        initial_out = out_dir / f"{sid}_initial.{fmt if fmt != 'extxyz' else 'xyz'}"
+        flow_out = out_dir / f"{sid}{meta_suffix}_flow.{ext}"
+        relax_out = out_dir / f"{sid}{meta_suffix}_relax.{ext}"
+        initial_out = out_dir / f"{sid}_initial.{ext}"
 
         print(f"Exporting {sid}: flow -> {flow_out.name}, relax -> {relax_out.name}")
         export_single(flow_traj, flow_out, fmt, single_flow=flow_single)

@@ -1,11 +1,11 @@
 trainer: adsorbdiff.trainers.meanflow_trainer.MeanFlowTrainer
 
 dataset:
-  - src: /root/autodl-tmp/AdsorbDiff/is2res_train_val_test_lmdbs/data/is2re/all/train
+  - src: /root/autodl-tmp/AdsorbFlow/is2res_train_val_test_lmdbs/data/is2re/all/train
   #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/train
   #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs/train_oc20dense_rs_overfit
     normalize_labels: False
-  - src: /root/autodl-tmp/AdsorbDiff/is2res_train_val_test_lmdbs/data/is2re/all/val_id/data.lmdb
+  - src: /root/autodl-tmp/AdsorbFlow/is2res_train_val_test_lmdbs/data/is2re/all/val_id/data.lmdb
 
 logger:
   name: wandb
@@ -18,7 +18,7 @@ task:
   relaxation_steps: 300
   relaxation_fmax: 0.01
   relax_dataset: 
-        src: /root/autodl-tmp/AdsorbDiff/val_nonrelaxed_update
+        src: /root/autodl-tmp/AdsorbFlow/val_nonrelaxed_update
         #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_corr/train_oc20dense_rs
         #src: /home/jovyan/shared-scratch/adeesh/denoising/com_denoising/com-xy_std0.01-10_numstep50x10_lr1.e-4_allcorr/final_struct_lmdb
         #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/val
@@ -28,7 +28,7 @@ task:
         damping: 1.0
         alpha: 70.0
         #traj_dir: /home/jovyan/shared-scratch/adeesh/denoising/com_sde/bysigma_lmdbcorr_std0.1-10_numstep100_sample1
-        traj_dir: /root/autodl-tmp/AdsorbDiff/relax_opt
+        traj_dir: /root/autodl-tmp/AdsorbFlow/relax_opt
   primary_metric: loss
 hide_eval_progressbar: False
 

@@ -5,18 +5,18 @@ import numpy as np
 import ase.io
 from tqdm import tqdm
 import lmdb, time, copy, shutil, glob, random, sys, datetime, pickle
-sys.path.append("/root/autodl-tmp/AdsorbDiff/Open-Catalyst-Dataset")
+sys.path.append("/root/autodl-tmp/AdsorbFlow/Open-Catalyst-Dataset")
 from ocdata.utils.vasp import write_vasp_input_files
 from adsorbdiff.placement import DetectTrajAnomaly
 import os
 
 # Link to the directory with all simulations for an adslab system
 # [Auto-filled] 指向你 grid search 中效果较好的一个配置 (例如 cfg1_steps50)
-TRAJ_INPUT_PATH = "/root/autodl-tmp/AdsorbDiff/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg1_steps30"
+TRAJ_INPUT_PATH = "/root/autodl-tmp/AdsorbFlow/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg1_steps30"
 EXPORT_PATH = "/root/autodl-tmp/vasp_cluster_inputs"
 
 # Add link to the tags.pkl file
-tag_path = "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_tags.pkl"
+tag_path = "/root/autodl-tmp/AdsorbFlow/oc20_dense_mappings/oc20dense_tags.pkl"
 
 VASP_FLAGS = {
     "ibrion": 2, # Static calculation (no relaxation)

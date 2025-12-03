@@ -106,17 +106,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.tags:
-        tag_path = "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_tags.pkl"
+        tag_path = "/root/autodl-tmp/AdsorbFlow/oc20_dense_mappings/oc20dense_tags.pkl"
         with open(os.path.join(tag_path), "rb") as h:
             tags_map = pickle.load(h)
     with open(
-        "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_targets.pkl",
+        "/root/autodl-tmp/AdsorbFlow/oc20_dense_mappings/oc20dense_targets.pkl",
         "rb",
     ) as f:
         dft_targets = pickle.load(f)
 
     with open(
-        "/root/autodl-tmp/AdsorbDiff/oc20_dense_mappings/oc20dense_mapping.pkl",
+        "/root/autodl-tmp/AdsorbFlow/oc20_dense_mappings/oc20dense_mapping.pkl",
         "rb",
     ) as f:
         oc20_dense_mapping = pickle.load(f)

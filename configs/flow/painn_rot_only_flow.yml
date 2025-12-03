@@ -1,11 +1,11 @@
 trainer: adsorbdiff.trainers.meanflow_rot_trainer.MeanFlowRotationTrainer
 
 dataset:
-  - src:  /root/autodl-tmp/AdsorbDiff/train_general
+  - src:  /root/autodl-tmp/AdsorbFlow/train_general
   #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/train
   #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs/train_oc20dense_rs_overfit
     normalize_labels: False
-  - src: /root/autodl-tmp/AdsorbDiff/val_split
+  - src: /root/autodl-tmp/AdsorbFlow/val_split
     normalize_labels: False
 logger:
   name: wandb
@@ -18,13 +18,13 @@ task:
   relaxation_steps: 300
   relaxation_fmax: 0.01
   relax_dataset:
-        src: /root/autodl-tmp/AdsorbDiff/val_nonrelaxed_update
+        src: /root/autodl-tmp/AdsorbFlow/val_nonrelaxed_update
   relax_opt:
         maxstep: 0.04
         memory: 50
         damping: 1.0
         alpha: 70.0
-        traj_dir: /root/autodl-tmp/AdsorbDiff/relax_opt
+        traj_dir: /root/autodl-tmp/AdsorbFlow/relax_opt
   primary_metric: rot_mse
 hide_eval_progressbar: False
 
