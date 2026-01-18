@@ -10,6 +10,11 @@ import os
 import pickle
 import random
 import sys
+from pathlib import Path
+
+# Add project root to python path
+sys.path.append(str(Path(__file__).resolve().parents[2]))
+
 from typing import Literal
 import ase.io
 import lmdb

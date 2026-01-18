@@ -2,7 +2,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 import math
 import ase
 import torch
@@ -18,35 +18,34 @@ from adsorbdiff.utils.rot_utils import axis_angle_to_matrix, sample_vec
 @torch.no_grad()
 def _pbc_wrap_xy(vec_xyz: torch.Tensor, batch) -> torch.Tensor:
     """
-    Wrap displacement to nearest PBC image on XY only.
-    Supports per-atom (sum(natoms),3) or per-sample (B,3).
+    Wrap **COM/anchor displacement** to nearest PBC image on XY only.
+    Only supports per-sample tensors of shape (B, 3), where B is batch size.
+
+    NOTE:
+    - Do NOT apply PBC wrapping per-atom for a rigid adsorbate.
+      Per-atom wrapping can split a molecule crossing cell boundaries.
     (等价于 MeanFlowTrainer 里的实现，这里内联一份方便独立使用)
     """
     B = int(batch.natoms.size(0))
+    if vec_xyz.shape[0] != B:
+        raise ValueError(
+            "_pbc_wrap_xy only supports per-sample (B,3) tensors. "
+            "Apply PBC to the rigid COM/anchor displacement, not per-atom vectors."
+        )
     out = torch.zeros_like(vec_xyz)
     cell = batch.cell.double()
 
-    if vec_xyz.shape[0] == batch.batch.shape[0]:
-        # per-atom
-        for b in range(B):
-            mask = (batch.batch == b)
-            if not mask.any():
-                continue
-            frac = torch.linalg.solve(cell[b].t(), vec_xyz[mask].double().t()).t()
-            frac[..., :2] = ((frac[..., :2] + 0.5) % 1.0) - 0.5
-            cart = (frac.float() @ batch.cell[b].float())
-            cart[..., 2] = vec_xyz[mask][..., 2]
-            out[mask] = cart
-    elif vec_xyz.shape[0] == B:
-        # per-sample
-        for b in range(B):
-            frac = torch.linalg.solve(cell[b].t(), vec_xyz[b].double())
-            frac[:2] = ((frac[:2] + 0.5) % 1.0) - 0.5
-            cart = (frac.float() @ batch.cell[b].float())
-            cart[2] = vec_xyz[b, 2]
-            out[b] = cart
-    else:
-        raise ValueError("vec_xyz first dim must be num_atoms or batch size B")
+    for b in range(B):
+        frac = torch.linalg.solve(cell[b].t(), vec_xyz[b].double())
+        # IMPORTANT:
+        # We only want to wrap the displacement in the a/b (XY) directions.
+        # For non-orthogonal cells where c has x/y components, leaving frac[2]
+        # would leak the z displacement into x/y when reconstructing cart.
+        frac[2] = 0.0
+        frac[:2] = ((frac[:2] + 0.5) % 1.0) - 0.5
+        cart = (frac.float() @ batch.cell[b].float())
+        cart[2] = vec_xyz[b, 2]
+        out[b] = cart
     return out
 
 
@@ -76,6 +75,8 @@ class FlowTorch:
         self.traj_dir = Path(traj_dir) if traj_dir else None
         self.traj_names = traj_names
         self.logger = logger
+        self.collected_steps = None  # Optional list of per-step positions for debugging
+        self.collected_step_ids = None  # Optional list[int] aligned with collected_steps
 
         if self.traj_dir:
             assert traj_names is not None and len(traj_names), \
@@ -89,6 +90,8 @@ class FlowTorch:
         torch.cuda.empty_cache()
         batch = self.batch.to(self.device)
         B = int(batch.natoms.size(0))
+        store_steps = bool(self.flow_opt.get("store_steps", False))
+        store_every = int(self.flow_opt.get("store_every", 1))
 
         # --- anchors / masks ---
         tags = batch.tags
@@ -96,25 +99,104 @@ class FlowTorch:
         bidx = batch.batch
         # 参考位置（若有 pos_relaxed 就用它）
         pos_ref = batch.pos_relaxed if hasattr(batch, "pos_relaxed") and batch.pos_relaxed is not None else batch.pos
-        # ads_center_ref = scatter(pos_ref[ads_mask], bidx[ads_mask], dim=0, reduce="mean")  # (B,3)
+        cell = batch.cell
+
+        # --- IMPORTANT: make adsorbate contiguous under PBC before computing COM/template ---
+        # If the dataset stores wrapped coordinates, a molecule crossing the unit cell can look
+        # "split". Using that split geometry as the rigid template makes step-0/step-1 look like
+        # dissociation and yields huge MAE. We unwrap within each sample using minimum-image.
+        def _make_contiguous_ads(pos_all: torch.Tensor) -> torch.Tensor:
+            if pos_all.numel() == 0:
+                return pos_all
+            out = pos_all.clone()
+            B_local = int(batch.natoms.size(0))
+            for bb in range(B_local):
+                mask_bb = (bidx == bb) & ads_mask
+                if not mask_bb.any():
+                    continue
+                idx_bb = torch.where(mask_bb)[0]
+                ref = out[idx_bb[0]]
+                diffs = out[idx_bb] - ref
+                frac = torch.linalg.solve(cell[bb].double().t(), diffs.double().t()).t()
+                frac = ((frac + 0.5) % 1.0) - 0.5
+                diffs_wrapped = (frac.float() @ cell[bb].float())
+                out[idx_bb] = ref + diffs_wrapped
+            return out
+
+        pos_ref_contig = pos_ref
+        if ads_mask.any():
+            pos_ref_contig = _make_contiguous_ads(pos_ref)
+
+        ads_center_ref = scatter(pos_ref_contig[ads_mask], bidx[ads_mask], dim=0, reduce="mean")  # (B,3)
         
         # Use Center of Mass instead of Geometric Center
-        ads_atomic_numbers = batch.atomic_numbers[ads_mask]
-        masses = torch.tensor(ase.data.atomic_masses[ads_atomic_numbers.long().cpu().numpy()], device=pos_ref.device, dtype=pos_ref.dtype)
-        weighted_pos = pos_ref[ads_mask] * masses.unsqueeze(-1)
-        sum_weighted_pos = scatter(weighted_pos, bidx[ads_mask], dim=0, dim_size=B, reduce="sum")
-        sum_masses = scatter(masses, bidx[ads_mask], dim=0, dim_size=B, reduce="sum")
-        ads_center_ref = sum_weighted_pos / sum_masses.unsqueeze(-1)
+        # ads_atomic_numbers = batch.atomic_numbers[ads_mask]
+        # masses = torch.tensor(ase.data.atomic_masses[ads_atomic_numbers.long().cpu().numpy()], device=pos_ref.device, dtype=pos_ref.dtype)
+        # weighted_pos = pos_ref[ads_mask] * masses.unsqueeze(-1)
+        # sum_weighted_pos = scatter(weighted_pos, bidx[ads_mask], dim=0, dim_size=B, reduce="sum")
+        # sum_masses = scatter(masses, bidx[ads_mask], dim=0, dim_size=B, reduce="sum")
+        # ads_center_ref = sum_weighted_pos / sum_masses.unsqueeze(-1)
 
         # 以参考 COM 居中后的吸附体原子坐标（旋转作用在这上面，避免累积漂移）
-        ads_pos_ref_centered = pos_ref[ads_mask] - ads_center_ref[bidx[ads_mask]]
+        ads_pos_ref_centered = pos_ref_contig[ads_mask] - ads_center_ref[bidx[ads_mask]]
+
+        # ---------------- NEW: 训练一致的旋转对称投影（linear/spherical） ----------------
+        def _canonicalize_axis(axis: torch.Tensor) -> torch.Tensor:
+            abs_axis = torch.abs(axis)
+            idx = int(torch.argmax(abs_axis))
+            val = float(axis[idx].item())
+            if val == 0.0:
+                return axis
+            sign = 1.0 if val > 0.0 else -1.0
+            return axis * axis.new_tensor(sign)
+
+        def _build_rot_projector(rel_points: torch.Tensor) -> torch.Tensor:
+            # rel_points: (N,3) centered coords of a single adsorbate
+            device = rel_points.device
+            dtype = rel_points.dtype
+            I = torch.eye(3, device=device, dtype=dtype)
+            if rel_points.numel() == 0 or rel_points.shape[0] <= 1:
+                return torch.zeros((3, 3), device=device, dtype=dtype)
+            cov = rel_points.t().double() @ rel_points.double()
+            cov = cov / max(int(rel_points.shape[0]), 1)
+            vals, vecs = torch.linalg.eigh(cov)
+            vals = vals.float()
+            vecs = vecs.float()
+            max_val = vals.max()
+            if (not torch.isfinite(max_val)) or float(max_val.item()) < 1.0e-8:
+                return torch.zeros((3, 3), device=device, dtype=dtype)
+            norm_vals = (vals / max_val).to(device=device, dtype=dtype)
+            spread = norm_vals[-1] - norm_vals[0]
+            if float(spread.item()) < 1.0e-2:
+                return torch.zeros((3, 3), device=device, dtype=dtype)
+            linear_tol = 5.0e-2
+            if float(norm_vals[1].item()) < linear_tol and float(norm_vals[0].item()) < linear_tol:
+                axis = vecs[:, -1]
+                axis_norm = torch.linalg.norm(axis)
+                if float(axis_norm.item()) < 1.0e-8:
+                    return torch.zeros((3, 3), device=device, dtype=dtype)
+                axis = _canonicalize_axis(axis / axis_norm)
+                P = I - torch.outer(axis.to(dtype=dtype), axis.to(dtype=dtype))
+                return P
+            return I
+
+        rot_projector = torch.zeros((B, 3, 3), device=pos_ref.device, dtype=pos_ref.dtype)
+        for b in range(B):
+            idx = (bidx[ads_mask] == b)
+            if idx.any():
+                rot_projector[b] = _build_rot_projector(ads_pos_ref_centered[idx])
+            else:
+                rot_projector[b] = torch.zeros((3, 3), device=pos_ref.device, dtype=pos_ref.dtype)
+
+        # Optionally expose for downstream debugging
+        batch.rot_projector = rot_projector
 
 
         # ---------------- NEW: 训练一致的“噪声锚点”初始化 ----------------
         # 噪声尺度可从 flow_opt 读，给出与训练一致的默认值
-        tr_sigma  = float(self.flow_opt.get("tr_sigma", 2.0))
+        tr_sigma  = float(self.flow_opt.get("tr_sigma", 3.0))
         rot_sigma = float(self.flow_opt.get("rot_sigma", 1.0))
-        allow_z = bool(self.flow_opt.get("allow_z", True))  # 默认允许 z 方向平移
+        allow_z = bool(self.flow_opt.get("allow_z", True))
 
         # 先验上的平移噪声：只在 XY，有 PBC wrap
         eps_tr = torch.zeros_like(ads_center_ref).normal_() * tr_sigma
@@ -126,6 +208,20 @@ class FlowTorch:
         else:
             eps_tr[:, 2] = 0.0
 
+        # Match training: clip translation noise in XY
+        tr_clip = self.flow_opt.get("tr_clip", None)
+        if tr_clip is not None:
+            tr_clip = float(tr_clip)
+            tr_norm = torch.linalg.norm(eps_tr[:, :2], dim=-1)
+            over = tr_norm > tr_clip
+            if over.any():
+                scale = torch.ones_like(tr_norm)
+                scale[over] = tr_clip / (tr_norm[over] + 1e-12)
+                eps_tr[:, :2] = eps_tr[:, :2] * scale[:, None]
+
+        if allow_z:
+            logging.info(f"[FlowTorch][Z-Debug] Initial Z noise (sigma_scale={tr_sigma_z_scale}): mean={eps_tr[:, 2].mean():.4f}, std={eps_tr[:, 2].std():.4f}, min={eps_tr[:, 2].min():.4f}, max={eps_tr[:, 2].max():.4f}")
+
         eps_tr = _pbc_wrap_xy(eps_tr, batch)  # wrap XY 到最近像
         # 先验上的旋转噪声：轴角
         eps_rot = torch.stack(
@@ -133,55 +229,24 @@ class FlowTorch:
             dim=0,
         )
 
+        # Match training: apply symmetry projector to the sampled rotation noise
+        eps_rot = torch.matmul(rot_projector, eps_rot.unsqueeze(-1)).squeeze(-1)
+
+        rot_clip = self.flow_opt.get("rot_clip", None)
+        if rot_clip is not None:
+            rot_clip = float(rot_clip)
+            rot_norm = torch.linalg.norm(eps_rot, dim=-1)
+            over_rot = rot_norm > rot_clip
+            if over_rot.any():
+                scale = torch.ones_like(rot_norm)
+                scale[over_rot] = rot_clip / (rot_norm[over_rot] + 1e-12)
+                eps_rot = eps_rot * scale[:, None]
+
         # 当前“锚点状态”：与训练 forward 中的 (ztr, zrot) 语义一致
         cur_ads_anchor = ads_center_ref + eps_tr           # (B,3)
         cur_rot = eps_rot.clone()                          # (B,3)
         
-        # --- Overlap Check & Lift (Initial Placement) ---
-        # Check if the initial random placement (t=1) causes overlap with the slab.
-        # If so, lift the adsorbate.
-        # If Z-axis is ignored (allow_z=False), lift by a fixed amount (1.0A) if overlap occurs.
-        
-        # 1. Reconstruct initial adsorbate positions (t=1)
-        # Apply rotation R to relative positions
-        R_init = axis_angle_to_matrix(cur_rot).float() # (B, 3, 3)
-        ads_idx = torch.where(ads_mask)[0]
-        sys_ids = bidx[ads_idx]
-        
-        # ads_pos_ref_centered is (N_ads, 3)
-        # We need to apply R[sys_ids] to ads_pos_ref_centered
-        rel_rotated = torch.bmm(R_init[sys_ids], ads_pos_ref_centered.unsqueeze(-1)).squeeze(-1) # (N_ads, 3)
-        
-        # Proposed Z positions of adsorbate atoms
-        prop_ads_z = cur_ads_anchor[sys_ids, 2] + rel_rotated[:, 2]
-        
-        # 2. Find min Z of adsorbate per batch
-        ads_min_z = scatter(prop_ads_z, sys_ids, dim=0, dim_size=B, reduce="min")
-        
-        # 3. Find max Z of slab per batch
-        slab_mask = (tags != 2)
-        if slab_mask.any():
-            slab_z = pos_ref[slab_mask, 2]
-            slab_batch = bidx[slab_mask]
-            slab_max_z = scatter(slab_z, slab_batch, dim=0, dim_size=B, reduce="max")
-            
-            # 4. Check Overlap
-            # Threshold: 0.5 A separation
-            overlap_amount = (slab_max_z + 0.5) - ads_min_z
-            lift_mask = overlap_amount > 0
-            
-            if not allow_z:
-                # Unconditional lift of 1.0 A if Z is ignored
-                cur_ads_anchor[:, 2] += 1.0
-            elif lift_mask.any():
-                # Lift to resolve overlap
-                lift_val = torch.where(lift_mask, overlap_amount, torch.zeros_like(overlap_amount))
-                
-                # Apply lift to cur_ads_anchor (which effectively updates eps_tr)
-                cur_ads_anchor[:, 2] += lift_val
-                # logging.info(f"[FlowTorch] Lifted {lift_mask.sum()} samples due to overlap.")
-
-        # ---------------------------------------------------------------
+        # No lifting/overlap handling; rely on allow_z gating and noise scales only.
 
         # --- 构造第一帧坐标（避免 dtr_xy / zrot == 0 的静止） ---
         R0 = axis_angle_to_matrix(cur_rot).float()  # (B,3,3)
@@ -191,10 +256,23 @@ class FlowTorch:
         cur_pos = pos_ref.clone()
         cur_pos[ads_idx] = x0 + cur_ads_anchor[sys_ids]
 
-        # --- time grid (CHANGED: 余弦网格，避免起步导数≈0) ---
+        # Collect initial noisy state if requested
+        step_positions = []
+        step_ids = []
+        if store_steps:
+            step_positions.append(cur_pos.detach().clone().cpu())
+            step_ids.append(0)
+
+        # --- time grid ---
         num_steps = int(self.flow_opt.get("num_steps", 30))
-        k = torch.arange(num_steps + 1, device=self.device)
-        ts = 0.5 * (1.0 + torch.cos(np.pi * k / num_steps))  # 1→0 的单调余弦
+        time_grid = str(self.flow_opt.get("time_grid", "cosine")).lower()
+        if time_grid not in {"cosine", "uniform"}:
+            raise ValueError(f"Unknown time_grid={time_grid}. Supported: cosine, uniform")
+        if time_grid == "uniform":
+            ts = torch.linspace(1.0, 0.0, num_steps + 1, device=self.device)
+        else:
+            kk = torch.arange(num_steps + 1, device=self.device)
+            ts = 0.5 * (1.0 + torch.cos(np.pi * kk / num_steps))  # 1→0 的单调余弦
         cfg_scale = float(self.flow_opt.get("cfg_scale", 5.0))
         flow_type = str(self.flow_opt.pop("flow_type", "fm"))
         if flow_type != "fm":
@@ -202,7 +280,74 @@ class FlowTorch:
         # allow_z moved to top
         write_every = int(self.flow_opt.get("write_every", 5))  # 0 表示只写末帧
 
-        print(f"[FlowTorch] num_steps={num_steps}, cfg_scale={cfg_scale}, allow_z={allow_z}, write_every={write_every}")
+        print(f"[FlowTorch] num_steps={num_steps}, cfg_scale={cfg_scale}, allow_z={allow_z}, write_every={write_every}, time_grid={time_grid}")
+
+        integrator = str(self.flow_opt.get("integrator", "heun")).lower()
+        if integrator not in {"euler", "heun"}:
+            raise ValueError(f"Unknown integrator={integrator}. Supported: euler, heun")
+        logging.info("[FlowTorch] integrator=%s", integrator)
+
+        def _pose_to_positions(ads_anchor: torch.Tensor, rot_axis_angle: torch.Tensor) -> torch.Tensor:
+            Rmat = axis_angle_to_matrix(rot_axis_angle).float()  # (B,3,3)
+            x = torch.bmm(Rmat[sys_ids], ads_pos_ref_centered.unsqueeze(-1)).squeeze(-1)
+            x = x + ads_anchor[sys_ids]
+            new_pos_local = cur_pos.clone()  # slab + ads template
+            new_pos_local[ads_idx] = x
+            return new_pos_local
+
+        def _wrap_anchor_update(anchor: torch.Tensor, delta: torch.Tensor) -> torch.Tensor:
+            # Wrap only XY displacement into nearest PBC image
+            delta_wrapped = _pbc_wrap_xy(delta, batch)
+            anchor_new = anchor + delta_wrapped
+            # 关键：把 anchor 相对 ads_center_ref 拉回训练分布
+            anchor_new = ads_center_ref + _pbc_wrap_xy(anchor_new - ads_center_ref, batch)
+            return anchor_new
+
+        def _eval_velocity(
+            pos_in: torch.Tensor,
+            ads_anchor_in: torch.Tensor,
+            rot_axis_angle_in: torch.Tensor,
+            t_eval: float,
+        ) -> Tuple[torch.Tensor, torch.Tensor]:
+            # 条件用“锚点状态”，不是实时 COM
+            cond_base = batch.clone()
+            cond_base.pos = pos_in
+            cond_base.ztr = ads_anchor_in
+            cond_base.zrot = rot_axis_angle_in
+            cond_base.t = torch.full((B, 1), float(t_eval), device=self.device)
+            cond_base.ads_center = ads_center_ref
+            cond_base.energy = torch.zeros(B, device=self.device)
+            cond_base.allow_z = allow_z
+
+            cond_co = cond_base.clone()
+            cond_co.cfg_conditioned = torch.ones(B, dtype=torch.bool, device=self.device)
+            cond_co.allow_z = allow_z
+            cond_un = cond_base.clone()
+            cond_un.cfg_conditioned = torch.zeros(B, dtype=torch.bool, device=self.device)
+            cond_un.allow_z = allow_z
+
+            out_un = base_model(cond_un, mode="fm")
+            out_co = base_model(cond_co, mode="fm")
+
+            v_tr_un, v_rot_un = out_un.get("v_tr"), out_un.get("v_rot")
+            v_tr_co, v_rot_co = out_co.get("v_tr"), out_co.get("v_rot")
+            if any(x is None for x in [v_tr_un, v_rot_un, v_tr_co, v_rot_co]):
+                raise RuntimeError("Model must return both translation & rotation fields for sampling.")
+
+            v_tr  = v_tr_un  + cfg_scale * (v_tr_co  - v_tr_un)
+            v_rot = v_rot_un + cfg_scale * (v_rot_co - v_rot_un)
+
+            # Match training: project rotational velocity into symmetry-allowed subspace
+            v_rot = torch.matmul(rot_projector, v_rot.unsqueeze(-1)).squeeze(-1)
+
+            # 如果平移只有 xy，补 z=0
+            if v_tr.shape[-1] == 2:
+                v_tr = torch.cat([v_tr, torch.zeros(B, 1, device=self.device)], dim=-1)
+            # 不允许 z 平移时强制置 0
+            if not allow_z:
+                v_tr[:, 2] = 0.0
+            return v_tr, v_rot
+
         # --- prepare trajectories ---
         trajectories = None
         if self.traj_dir:
@@ -226,105 +371,47 @@ class FlowTorch:
         logging.info("[FlowTorch] Start sampling with CFG (t=1→0)")
         for k in tqdm(range(num_steps)):
             t_cur, t_next = ts[k].item(), ts[k + 1].item()
-            t_mid = 0.5 * (t_cur + t_next)
             dt = t_cur - t_next
 
-            # -------------- CHANGED: 条件用“锚点状态”，不是实时 COM --------------
-            cond_base = batch.clone()
-            cond_base.pos = cur_pos
-            cond_base.ztr = cur_ads_anchor                    # 与训练中的 ztr 语义一致
-            cond_base.zrot = cur_rot                          # 与训练中的 zrot 语义一致
-            cond_base.t = torch.full((B, 1), t_mid, device=self.device)
-            cond_base.ads_center = ads_center_ref
-            cond_base.energy = torch.zeros(B, device=self.device)
-            cond_base.allow_z = allow_z
+            if integrator == "euler":
+                t_mid = 0.5 * (t_cur + t_next)
+                v_tr, v_rot = _eval_velocity(cur_pos, cur_ads_anchor, cur_rot, t_mid)
 
-            cond_co = cond_base.clone()
-            cond_co.cfg_conditioned = torch.ones(B, dtype=torch.bool, device=self.device)
-            cond_co.allow_z = allow_z
-            cond_un = cond_base.clone()
-            cond_un.cfg_conditioned = torch.zeros(B, dtype=torch.bool, device=self.device)
-            cond_un.allow_z = allow_z
-            # ---------------------------------------------------------------------
+                new_ads_anchor = _wrap_anchor_update(cur_ads_anchor, -v_tr * dt)
+                new_rot = cur_rot - v_rot * dt
+                new_pos = _pose_to_positions(new_ads_anchor, new_rot)
+                cur_pos, cur_rot, cur_ads_anchor = new_pos, new_rot, new_ads_anchor
 
-            out_un = base_model(cond_un, mode="fm")
-            out_co = base_model(cond_co, mode="fm")
+            else:  # heun / RK2
+                # v1 @ (state, t_cur)
+                v1_tr, v1_rot = _eval_velocity(cur_pos, cur_ads_anchor, cur_rot, t_cur)
 
-            def _extract_fields(out_dict):
-                return out_dict.get("v_tr"), out_dict.get("v_rot")
+                # predictor
+                ads_anchor_pred = _wrap_anchor_update(cur_ads_anchor, -v1_tr * dt)
+                rot_pred = cur_rot - v1_rot * dt
+                pos_pred = _pose_to_positions(ads_anchor_pred, rot_pred)
 
-            v_tr_un, v_rot_un = _extract_fields(out_un)
-            v_tr_co, v_rot_co = _extract_fields(out_co)
-            if any(x is None for x in [v_tr_un, v_rot_un, v_tr_co, v_rot_co]):
-                raise RuntimeError("Model must return both translation & rotation fields for sampling.")
-            v_tr  = v_tr_un  + cfg_scale * (v_tr_co  - v_tr_un)
-            v_rot = v_rot_un + cfg_scale * (v_rot_co - v_rot_un)
+                # v2 @ (predicted state, t_next)
+                v2_tr, v2_rot = _eval_velocity(pos_pred, ads_anchor_pred, rot_pred, t_next)
+                v_tr = 0.5 * (v1_tr + v2_tr)
+                v_rot = 0.5 * (v1_rot + v2_rot)
 
-            if os.getenv("FLOW_DEBUG_CFG", ""):
-                delta_tr = v_tr_co - v_tr_un
-                delta_rot = v_rot_co - v_rot_un
-                def _cosine(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-                    denom = a.norm(dim=-1) * b.norm(dim=-1) + 1e-12
-                    return (a * b).sum(dim=-1) / denom
-                cos_tr = _cosine(v_tr_un, v_tr_co)
-                cos_rot = _cosine(v_rot_un, v_rot_co)
-                cos_tr_delta = _cosine(v_tr_un, delta_tr)
-                cos_rot_delta = _cosine(v_rot_un, delta_rot)
-                logging.info(
-                    "[FlowTorch][CFG-debug] Δv_tr max=%.4e mean=%.4e | Δv_rot max=%.4e mean=%.4e",
-                    float(delta_tr.norm(dim=-1).max().item()),
-                    float(delta_tr.norm(dim=1).mean().item()),
-                    float(delta_rot.norm(dim=1).max().item()),
-                    float(delta_rot.norm(dim=1).mean().item()),
-                )
-                logging.info(
-                    "[FlowTorch][CFG-debug] ||v_tr_un|| mean=%.4e | ||v_tr_co|| mean=%.4e",
-                    float(v_tr_un.norm(dim=-1).mean().item()),
-                    float(v_tr_co.norm(dim=-1).mean().item()),
-                )
-                logging.info(
-                    "[FlowTorch][CFG-debug] cos(v_tr_un,v_tr_co)=%.4f | cos(v_rot_un,v_rot_co)=%.4f",
-                    float(cos_tr.mean().item()),
-                    float(cos_rot.mean().item()),
-                )
-                logging.info(
-                    "[FlowTorch][CFG-debug] cos(v_tr_un,Δv_tr)=%.4f | cos(v_rot_un,Δv_rot)=%.4f",
-                    float(cos_tr_delta.mean().item()),
-                    float(cos_rot_delta.mean().item()),
-                )
-
-            # 如果平移只有 xy，补 z=0
-            if v_tr.shape[-1] == 2:
-                v_tr = torch.cat([v_tr, torch.zeros(B, 1, device=self.device)], dim=-1)
-            # 不允许 z 平移时强制置 0
-            if not allow_z:
-                v_tr[:, 2] = 0.0
-
-            # --------- CHANGED: 用“锚点状态”进行 ODE 积分 & PBC wrap ----------
-            new_ads_anchor = cur_ads_anchor - v_tr * dt     # 与 t 从 1→0 的方向配套
-            new_rot        = cur_rot        - v_rot * dt
-
-            # PBC：把 ads COM 的位移 wrap 到 XY 最近像，避免漂移到远处
-            disp = new_ads_anchor - cur_ads_anchor
-            disp_wrapped = _pbc_wrap_xy(disp, batch)
-            new_ads_anchor = cur_ads_anchor + disp_wrapped
-            # ---------------------------------------------------------------------
-
-            # 刚体旋转 + 平移（只更新吸附体原子），基于“参考-居中”坐标避免数值漂移
-            R = axis_angle_to_matrix(new_rot).float()  # (B,3,3)
-            x = torch.bmm(R[sys_ids], ads_pos_ref_centered.unsqueeze(-1)).squeeze(-1)
-            x = x + new_ads_anchor[sys_ids]
-            new_pos = cur_pos.clone()
-            new_pos[ads_idx] = x
-
-            # 更新状态（注意：下一步条件仍使用锚点，而不是实时 COM）
-            cur_pos, cur_rot, cur_ads_anchor = new_pos, new_rot, new_ads_anchor
+                # corrector from original state
+                new_ads_anchor = _wrap_anchor_update(cur_ads_anchor, -v_tr * dt)
+                new_rot = cur_rot - v_rot * dt
+                new_pos = _pose_to_positions(new_ads_anchor, new_rot)
+                cur_pos, cur_rot, cur_ads_anchor = new_pos, new_rot, new_ads_anchor
 
             # 写轨迹（按需要每步写）
             if trajectories is not None and write_every > 0 and ((k + 1) % write_every == 0):
                 tmp_batch = batch.clone()
                 tmp_batch.pos = cur_pos
                 self._write_traj_step(tmp_batch, trajectories)
+
+            # 保存逐步坐标用于可视化/调试
+            if store_steps and ((k + 1) % store_every == 0 or (k + 1) == num_steps):
+                step_positions.append(cur_pos.detach().clone().cpu())
+                step_ids.append(k + 1)
 
         # 末帧写盘
         if trajectories is not None:
@@ -345,6 +432,14 @@ class FlowTorch:
 
         if original_training:
             base_model.train()
+
+        # 暴露给调用方的逐步坐标（list[Tensor])，仅在 store_steps=True 时非空
+        if store_steps:
+            self.collected_steps = step_positions
+            self.collected_step_ids = step_ids
+        else:
+            self.collected_steps = None
+            self.collected_step_ids = None
 
         return out_batch
 

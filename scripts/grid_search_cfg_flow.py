@@ -37,7 +37,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cfg-scales", type=float, nargs="+", required=True, help="List of cfg_scale values")
     parser.add_argument("--num-steps", type=int, nargs="+", required=True, help="List of Flow Matching num_steps values")
     parser.add_argument("--output-root", type=str, default="grid_search_runs", help="Root directory for grid search outputs")
-    parser.add_argument("--flow-config", type=str, default="configs/flow/painn_conditional_flow.yml", help="Config file for flow sampling stage")
+    parser.add_argument("--model-type", type=str, default="painn", choices=["painn", "eqv2"], help="Model architecture type (painn or eqv2)")
+    parser.add_argument("--flow-config", type=str, default=None, help="Config file for flow sampling stage (auto-detected from --model-type if not specified)")
     parser.add_argument(
         "--flow-checkpoint",
         type=str,
@@ -48,7 +49,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--relax-checkpoint", type=str, required=True, help="Checkpoint for the relaxation model")
     parser.add_argument("--relax-dataset", type=str, default="val_nonrelaxed_update", help="LMDB dataset used for flow sampling stage")
     parser.add_argument("--nsites", type=int, default=1, help="Number of site seeds to process (mirrors run.py behaviour)")
-    parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs per command")
+    parser.add_argument("--gpus", type=int, default=2, help="Number of GPUs per command")
     parser.add_argument("--master-port", type=int, default=1235, help="Master port for torch.distributed.launch")
     parser.add_argument("--num-workers", type=int, default=4, help="Worker count for LMDB conversion stage")
     parser.add_argument("--dft-targets", type=str, default="oc20_dense_mappings/oc20dense_targets.pkl", help="Pickle file with DFT target energies")
@@ -228,6 +229,24 @@ def build_relax_command(args: argparse.Namespace, step_dir: Path) -> List[str]:
 
 def main() -> None:
     args = parse_args()
+    
+    # Auto-detect model type from checkpoint path if using default
+    if args.model_type == "painn":
+        # Check if checkpoint path contains eqv2/equiformer keywords
+        ckpt_path_lower = args.flow_checkpoint.lower()
+        if "eqv2" in ckpt_path_lower or "equiformer" in ckpt_path_lower:
+            args.model_type = "eqv2"
+            print(f"[grid-search] Auto-detected model type from checkpoint path: eqv2")
+    
+    # Auto-detect flow config based on model type if not explicitly specified
+    if args.flow_config is None:
+        model_type_to_config = {
+            "painn": "configs/flow/painn_conditional_flow.yml",
+            "eqv2": "configs/flow/eqv2_conditional_flow.yml",
+        }
+        args.flow_config = model_type_to_config[args.model_type]
+        print(f"[grid-search] Using flow config for {args.model_type}: {args.flow_config}")
+    
     flow_checkpoint_path = Path(args.flow_checkpoint)
     if not flow_checkpoint_path.is_absolute():
         flow_checkpoint_path = (REPO_ROOT / flow_checkpoint_path).resolve()

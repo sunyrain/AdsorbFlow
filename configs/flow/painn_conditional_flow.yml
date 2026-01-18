@@ -28,7 +28,6 @@ task:
         memory: 50
         damping: 1.0
         alpha: 70.0
-        cfg_scale: 2.0 
         #traj_dir: /home/jovyan/shared-scratch/adeesh/denoising/com_sde/bysigma_lmdbcorr_std0.1-10_numstep100_sample1
         traj_dir: /root/autodl-tmp/AdsorbFlow/relax_opt
   primary_metric: loss
@@ -51,8 +50,8 @@ model:
   flow_head_scale: 5.0
 
 optim:
-  batch_size:                   8        # 6
-  eval_batch_size:              8         # 6
+  batch_size:                   16        # 6
+  eval_batch_size:              16         # 6
   grad_accumulation_steps:      1         # gradient accumulation: effective batch size = `grad_accumulation_steps` * `batch_size` * (num of GPUs)
   load_balancing: atoms
   num_workers: 2
@@ -64,19 +63,19 @@ optim:
   scheduler: StepLR
   # warmup_steps: 2
   # warmup_factor: 0.2
-  step_size: 3
-  gamma: 0.95
+  step_size: 5
+  gamma: 0.99
 
-  max_epochs: 100
+  max_epochs: 10000
   force_coefficient: 100
   energy_coefficient: 1
   clip_grad_norm: 10
   ema_decay: 0.999
   loss_energy: mae
   loss_force: l2mae
-  p_cfg: 0.15        # ← 关键：cfg 强度
+  p_cfg: 0.25        # ← 关键：cfg 强度
   
-  checkpoint_every_epoch: 3   # 每 5 个 epoch 存一次 epoch_XXX.pt
+  checkpoint_every_epoch: 50   # 每 20 个 epoch 存一次 epoch_XXX.pt
   checkpoint_every: -1        # 禁用基于 step 的频繁保存 (checkpoint.pt 会在每个 epoch 结束时自动更新)
 
   flow:
@@ -86,10 +85,10 @@ optim:
     path: rectified           # 先用直线/测地插值
     time_sampl: uniform       # 或 cosine
     tr_sigma: 3         # XY 噪声尺度（按数据再调）
-    allow_z: True       # 是否允许 Z 方向平移
+    allow_z: True    # 是否允许 Z 方向平移
     tr_sigma_z_scale: 0.3 # Z 轴噪声缩放因子 (1.0 = 与 XY 各向同性)
     rot_sigma: 1           # 轴角噪声尺度（弧度）
-    tr_clip: 15               # Translation clip
+    tr_clip: 20               # Translation clip
     rot_clip: 5               # Rotation clip
     grad_norm_guard: 5000000  # Gradient norm guard
     write_every: 10           # 每隔多少个 epoch 写一次 traj

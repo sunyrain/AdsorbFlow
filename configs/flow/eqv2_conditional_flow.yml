@@ -72,7 +72,7 @@ model:
   use_grid_mlp:             True        # [False, True] If `True`, use projecting to grids and performing MLPs for FFNs.
 
   alpha_drop:               0.1         # [0.0, 0.1]
-  drop_path_rate:           0.1         # [0.0, 0.05]
+  drop_path_rate:           0.05         # [0.0, 0.05]
   proj_drop:                0.0
 
   weight_init:              'uniform'    # ['uniform', 'normal']
@@ -81,12 +81,12 @@ model:
   energy_encoding:          scalar
 
 optim:
-  batch_size:                   1       # 6
-  eval_batch_size:              1         # 6
+  batch_size:                  4       # 6
+  eval_batch_size:              4         # Match train batch for ODE sampling stability
   grad_accumulation_steps:      1         # gradient accumulation: effective batch size = `grad_accumulation_steps` * `batch_size` * (num of GPUs)
   load_balancing: atoms
   num_workers: 1
-  lr_initial:                   4.e-4     # [0.0002, 0.0004], eSCN uses 0.0008 for batch size 96
+  lr_initial:                   2.e-4     # [0.0002, 0.0004], eSCN uses 0.0008 for batch size 96
 
   optimizer: AdamW
   optimizer_params:
@@ -109,16 +109,17 @@ optim:
   checkpoint_every: 1000 
 
   # Flow Matching configuration
-  p_cfg: 0.1        # Classifier-Free Guidance probability
+  p_cfg: 0.2        # Classifier-Free Guidance probability
 
   flow:
     nan_weight_debug: false  
+    monitor_interval: 0       # Disable CFG debug monitoring to save VRAM (default 100)
     type: fm                  # Flow Matching
     fm_regression: velocity   # Target: velocity
     path: rectified           # Interpolation: rectified (straight line)
     time_sampl: uniform       # Time sampling: uniform
     tr_sigma: 3               # Translation noise scale
-    tr_sigma_z_scale: 1.0     # Z-axis noise scale factor
+    tr_sigma_z_scale: 0.3     # Z-axis noise scale factor
     rot_sigma: 1              # Rotation noise scale (radians)
     tr_clip: 15               # Translation clip
     rot_clip: 5               # Rotation clip

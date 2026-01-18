@@ -708,33 +708,52 @@ class PaiNN(BaseModel):
         if not allow_z and translation.size(-1) >= 3:
             translation[:, 2] = 0.0
 
-        # === 2. Rotation 部分 (关键修改: 引入叉积聚合以匹配轴矢量宇称) ===
+        # === 2. Rotation 部分 ===
         if forces2 is not None:
             ads_forces2 = forces2[ads_mask]
             
-            # (A) 计算吸附剂中心 (Center of Mass)
+            # (A) 计算吸附剂几何中心 (Geometric Center)
             ads_pos = data.pos[ads_mask]
             ads_batch = batch_idx[ads_mask]
-            
-            # Use Center of Mass
-            ads_an = data.atomic_numbers[ads_mask].long().cpu().numpy()
-            masses = torch.tensor(atomic_masses[ads_an], device=ads_pos.device, dtype=ads_pos.dtype)
-            weighted_pos = ads_pos * masses.unsqueeze(-1)
-            sum_weighted_pos = scatter(weighted_pos, ads_batch, dim=0, dim_size=batch_size, reduce="sum")
-            sum_masses = scatter(masses, ads_batch, dim=0, dim_size=batch_size, reduce="sum")
-            centers = sum_weighted_pos / sum_masses.unsqueeze(-1)
+            centers = scatter(ads_pos, ads_batch, dim=0, dim_size=batch_size, reduce="mean")
             
             # (B) 计算相对坐标 r (relative position)
-            # centers[ads_batch] 将中心坐标广播回每个原子
             rel_pos = ads_pos - centers[ads_batch]
 
-            # (C) 计算"力矩"项: r x v
-            # PaiNN 输出的是极矢量(类似切向速度)，通过叉积转换为轴矢量(旋转轴)
-            # 这样可以解决"刚体旋转的平均线速度为0"的问题，同时匹配宇称(Polar x Polar = Axial)
+            # (C) 计算角动量 L = sum(r x v) (Unit mass approximation)
             torque_like = torch.cross(rel_pos, ads_forces2, dim=-1)
+            L_total = scatter(torque_like, ads_batch, dim=0, dim_size=batch_size, reduce="sum")
             
-            # (D) 聚合得到全局旋转量
-            rotation = scatter(torque_like, ads_batch, dim=0, dim_size=batch_size, reduce="mean")
+            # (D) 计算转动惯量 I = sum(r^2 1 - r r^T) (Unit mass)
+            r_sq = (rel_pos ** 2).sum(dim=-1, keepdim=True)
+            eye = torch.eye(3, device=translation.device, dtype=rel_pos.dtype).unsqueeze(0)
+            r_rT = rel_pos.unsqueeze(2) * rel_pos.unsqueeze(1)
+            I_atom = r_sq.unsqueeze(2) * eye - r_rT
+            
+            I_total = scatter(I_atom, ads_batch, dim=0, dim_size=batch_size, reduce="sum")
+
+            # Apply Symmetry Projection BEFORE solve to ensure stability
+            rot_projector = getattr(data, "rot_projector", None)
+            if torch.is_tensor(rot_projector):
+                if rot_projector.device != I_total.device:
+                    rot_projector = rot_projector.to(device=I_total.device, dtype=I_total.dtype)
+                # Project L: P @ L
+                L_total = torch.matmul(rot_projector, L_total.unsqueeze(-1)).squeeze(-1)
+                # Project I: P @ I @ P
+                I_total = torch.matmul(rot_projector, torch.matmul(I_total, rot_projector))
+            
+            # (E) 解线性方程 I * omega = L
+            # 添加正则化项以防止奇异性 (例如线性分子 I 为秩2)
+            eye = torch.eye(3, device=I_total.device, dtype=I_total.dtype).unsqueeze(0)
+            trace = I_total.diagonal(dim1=-2, dim2=-1).sum(-1)          # (B,)
+            lam = 1e-3 * (trace / 3.0).clamp(min=1e-8)                  # (B,)
+            I_reg = I_total + lam[:, None, None] * eye
+
+            
+            try:
+                rotation = torch.linalg.solve(I_reg, L_total.unsqueeze(-1)).squeeze(-1)
+            except Exception:
+                rotation = scatter(torque_like, ads_batch, dim=0, dim_size=batch_size, reduce="mean")
         else:
             rotation = torch.zeros(
                 batch_size,
@@ -1001,7 +1020,7 @@ class PaiNNOutput(nn.Module):
             vec_fp32 = vec.to(torch.float32)
             for layer in self.output_network:
                 x_fp32, vec_fp32 = layer(x_fp32, vec_fp32)
-            out = vec_fp32.squeeze()
+            out = vec_fp32.squeeze(-1)
             out = out.to(orig_dtype)
 
         if self.activation == "tanh":

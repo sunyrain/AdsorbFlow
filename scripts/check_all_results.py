@@ -9,7 +9,7 @@ import glob
 base_path = "/root/autodl-tmp/AdsorbFlow"
 ref_path = os.path.join(base_path, "oc20_dense_mappings/oc20dense_ref_energies.pkl")
 target_path = os.path.join(base_path, "oc20_dense_mappings/oc20dense_targets.pkl")
-vasp_base_dir = "/root/autodl-tmp/AdsorbFlow/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg1_steps30/vasp"
+vasp_base_dir = "/root/autodl-tmp/AdsorbFlow/grid_search_runs/2025-12-17-19-22-40-z_0.3_geo_lift0_cfg_0.15_tr_3_t_opt_pbc_epoch0180_unweightedvalloss1.4265_posmae0.6214/val_nonrelaxed_update/nsites_3/cfg3_steps10/vasp2"
 
 # Load data
 print("Loading reference energies...")

@@ -28,7 +28,7 @@ from adsorbdiff.datasets.lmdb_dataset import LmdbDataset
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Convert Flow/relaxation .traj files to .xyz for OVITO")
     parser.add_argument(
-        "run_dir",
+        "--run_dir",
         help="Directory containing Flow output .traj files",
     )
     parser.add_argument(
@@ -69,7 +69,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--steps",
-        default="",
+        default="10",
         help="Optional step count to include in filename (e.g. '50')",
     )
     return parser.parse_args()
@@ -84,6 +84,28 @@ def iter_traj_files(root: Path, sids: Iterable[str] | None) -> Iterable[Path]:
             if not candidate.exists():
                 raise FileNotFoundError(f"Trajectory not found: {candidate}")
             yield candidate
+
+
+def read_anomalous_sids(relax_dir: Path) -> Optional[list[str]]:
+    """Read anomalous_structures_new.txt if present and return list of SIDs.
+
+    The file is expected to have a header, a separator line, and then rows like:
+    "SID | FID | Anomalies". We take the first column as sid.
+    """
+    txt_path = relax_dir / "anomalous_structures_new.txt"
+    if not txt_path.exists():
+        return None
+    sids: list[str] = []
+    with txt_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("SID ") or line.startswith("-"):
+                continue
+            parts = line.split()
+            if not parts:
+                continue
+            sids.append(parts[0])
+    return sids if sids else None
 
 
 def _to_atoms(record) -> Atoms:
@@ -161,7 +183,12 @@ def main() -> None:
     if not relax_dir.exists():
         raise FileNotFoundError(f"Relax directory not found: {relax_dir}")
 
+    # If anomaly file exists, override sids with the anomalous list
     sids = args.sids
+    anomalous_sids = read_anomalous_sids(relax_dir)
+    if anomalous_sids is not None:
+        sids = anomalous_sids
+        print(f"[info] Found anomalous_structures_new.txt; exporting {len(sids)} anomalous trajectories only.")
     flow_single = args.single_flow_frame
     fmt = args.format
     ext = "xyz" if fmt == "extxyz" else fmt

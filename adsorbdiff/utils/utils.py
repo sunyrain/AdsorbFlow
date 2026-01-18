@@ -456,7 +456,10 @@ def build_config(args, args_override):
     config["submit"] = args.submit
     config["summit"] = args.summit
     # Distributed
-    config["local_rank"] = args.local_rank
+    if "LOCAL_RANK" in os.environ:
+        config["local_rank"] = int(os.environ["LOCAL_RANK"])
+    else:
+        config["local_rank"] = args.local_rank
     config["distributed_port"] = args.distributed_port
     config["world_size"] = args.num_nodes * args.num_gpus
     config["distributed_backend"] = args.distributed_backend

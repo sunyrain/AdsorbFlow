@@ -663,8 +663,30 @@ def calculate_success_metrics(minE_dict, dft_targets, traj_paths):
 
 
 def anomalous_structure(traj):
-    initial_atoms = traj[0]
-    final_atoms = traj[-1]
+    def _make_ads_contiguous(atoms):
+        # Unwrap adsorbate atoms with minimum image so a molecule split across PBC
+        # doesn't look dissociated to the connectivity checker.
+        tags = atoms.get_tags()
+        ads_idx = np.where(tags == 2)[0]
+        if ads_idx.size == 0:
+            return atoms
+        cell = atoms.get_cell()
+        try:
+            inv_cell = np.linalg.inv(cell.T)
+        except Exception:
+            return atoms
+        pos = atoms.get_positions()
+        ref = pos[ads_idx[0]]
+        diffs = pos[ads_idx] - ref
+        frac = diffs @ inv_cell
+        frac = (frac + 0.5) % 1.0 - 0.5
+        pos[ads_idx] = ref + frac @ cell
+        new_atoms = atoms.copy()
+        new_atoms.set_positions(pos)
+        return new_atoms
+
+    initial_atoms = _make_ads_contiguous(traj[0])
+    final_atoms = _make_ads_contiguous(traj[-1])
     atom_tags = initial_atoms.get_tags()
     detector = DetectTrajAnomaly(initial_atoms, final_atoms, atom_tags)
     anom = np.array(

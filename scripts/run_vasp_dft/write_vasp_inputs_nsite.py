@@ -1,4 +1,11 @@
 import os
+import sys
+
+# Ensure project root (AdsorbFlow/) is on PYTHONPATH when running via a script path.
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
 os.environ["VASP_PP_PATH"] = "/root/autodl-tmp/potpaw_PBE_54"
 
 import numpy as np
@@ -8,11 +15,10 @@ import lmdb, time, copy, shutil, glob, random, sys, datetime, pickle
 sys.path.append("/root/autodl-tmp/AdsorbFlow/Open-Catalyst-Dataset")
 from ocdata.utils.vasp import write_vasp_input_files
 from adsorbdiff.placement import DetectTrajAnomaly
-import os
 
 # Link to the directory with all simulations for an adslab system
 # [Auto-filled] 指向你 grid search 中效果较好的一个配置 (例如 cfg1_steps50)
-TRAJ_INPUT_PATH = "/root/autodl-tmp/AdsorbFlow/grid_search_runs/pt_z1_epoch0021_valloss3.4507/val_nonrelaxed_update/nsites_10/cfg1_steps30"
+TRAJ_INPUT_PATH = "/root/autodl-tmp/AdsorbFlow/grid_search_runs/2025-12-17-19-22-40-z_0.3_geo_lift0_cfg_0.15_tr_3_t_opt_pbc_epoch0180_unweightedvalloss1.4265_posmae0.6214/val_nonrelaxed_update/nsites_3/cfg3_steps10"
 EXPORT_PATH = "/root/autodl-tmp/vasp_cluster_inputs"
 
 # Add link to the tags.pkl file
@@ -41,7 +47,7 @@ with open(os.path.join(tag_path), "rb") as h:
 
 # Modified glob pattern to match the directory structure: .../site_id/relaxations/*.traj
 traj_paths = glob.glob(
-    f"{TRAJ_INPUT_PATH}/*/relaxations/*.traj"
+    f"{TRAJ_INPUT_PATH}/*/*.traj"
 )
 
 
@@ -76,7 +82,7 @@ for traj_path in tqdm(traj_paths):
     else:
         uniques_sids[sid] = 1
 
-    files_per_sid = glob.glob(f"{TRAJ_INPUT_PATH}/*/relaxations/{sid}*.traj")
+    files_per_sid = glob.glob(f"{TRAJ_INPUT_PATH}/*/{sid}*.traj")
 
     # get the minimum energy structure
     energies = np.array(
@@ -103,10 +109,10 @@ for traj_path in tqdm(traj_paths):
     relaxed_struct.set_constraint(ase.constraints.FixAtoms(fixed_atoms))
     
     # 1. Export to original location
-    os.makedirs(f"{TRAJ_INPUT_PATH}/vasp", exist_ok=True)
+    os.makedirs(f"{TRAJ_INPUT_PATH}/vasp2", exist_ok=True)
     write_vasp_input_files(
         relaxed_struct,
-        outdir=f"{TRAJ_INPUT_PATH}/vasp/{sid}_{fid}",
+        outdir=f"{TRAJ_INPUT_PATH}/vasp2/{sid}_{fid}",
         vasp_flags=VASP_FLAGS,
     )
 
