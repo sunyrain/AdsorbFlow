@@ -78,5 +78,65 @@ Please consider citing our paper if you find it helpful. Thank you!
 }
 ```
 
+## Experiment Results (AdsorbFlow)
+
+> Evaluated on OC20-Dense val set, nsites=10, union metric. SR = Success Rate @10 (ΔE < 0.1 eV). All models trained with conditional flow matching + classifier-free guidance.
+
+### Main Results Summary
+
+| Model | Backbone | Dimension | p_cfg | Best SR@10 | Best w | Best K | ΔE (eV) |
+|-------|----------|-----------|-------|------------|--------|--------|---------|
+| **AdsorbFlow (EqV2)** | EqV2 | 3D | 0.20 | **72.7%** | 7 | 30 | 0.320 |
+| AdsorbFlow (EqV2 ep187) | EqV2 | 3D | 0.20 | 70.5% | 7 | 5 | 0.342 |
+| AdsorbFlow (PaiNN) | PaiNN | 3D | 0.20 | 63.6% | 1 | 30 | 0.515 |
+| AdsorbFlow (PaiNN, 2D) | PaiNN | 2D | 0.20 | 63.6% | 5 | 5 | 0.398 |
+
+### Detailed Grid Search — EqV2 3D (ep208, best val loss)
+
+| w\K | 5 | 10 | 30 |
+|-----|---|----|----|
+| 0 | 63.6% (0.420) | 61.4% (0.379) | 59.1% (0.422) |
+| 1 | 61.4% (0.380) | 68.2% (0.358) | 61.4% (0.342) |
+| 3 | 70.5% (0.332) | 65.9% (0.358) | 65.9% (0.345) |
+| 5 | 68.2% (0.312) | 65.9% (0.293) | 61.4% (0.306) |
+| 7 | 68.2% (0.318) | 65.9% (0.286) | **72.7% (0.320)** |
+| 10 | 63.6% (0.352) | 65.9% (0.272) | 63.6% (0.274) |
+| 15 | 65.9% (0.398) | 65.9% (0.294) | 61.4% (0.281) |
+
+### Detailed Grid Search — PaiNN 3D (cfg=0.20, best checkpoint)
+
+| w\K | 5 | 10 | 30 |
+|-----|---|----|----|
+| 0 | 56.8% (0.535) | 59.1% (0.509) | 61.4% (0.537) |
+| 1 | 59.1% (0.516) | 59.1% (0.523) | **63.6% (0.515)** |
+| 2 | 56.8% (0.540) | 54.5% (0.507) | 56.8% (0.533) |
+| 3 | 56.8% (0.545) | 56.8% (0.537) | 59.1% (0.520) |
+| 5 | 61.4% (0.478) | 61.4% (0.470) | 56.8% (0.475) |
+| 7 | 61.4% (0.487) | 56.8% (0.486) | 59.1% (0.504) |
+| 10 | 59.1% (0.462) | 54.5% (0.457) | 59.1% (0.485) |
+
+### Detailed Grid Search — PaiNN 2D (cfg=0.20, best checkpoint)
+
+| w\K | 5 | 10 | 30 |
+|-----|---|----|----|
+| 0 | 56.8% (0.474) | 56.8% (0.458) | 54.5% (0.438) |
+| 1 | 56.8% (0.401) | 61.4% (0.403) | 59.1% (0.412) |
+| 2 | 56.8% (0.412) | 61.4% (0.392) | 56.8% (0.429) |
+| 3 | 61.4% (0.426) | 61.4% (0.415) | 59.1% (0.408) |
+| 5 | **63.6% (0.398)** | 61.4% (0.437) | 56.8% (0.441) |
+| 10 | 63.6% (0.441) | 59.1% (0.369) | 59.1% (0.396) |
+
+### Checkpoints
+
+| Model | Path |
+|-------|------|
+| EqV2 3D cfg=0.20 (ep208) | `checkpoints/2026-01-13-23-21-36-.../epoch0208_*.pt` |
+| EqV2 3D cfg=0.20 (ep187) | `checkpoints/2026-01-13-23-21-36-.../epoch0187_*.pt` |
+| PaiNN 3D cfg=0.20 | `checkpoints/2026-02-12-09-14-40-.../best_checkpoint.pt` |
+| PaiNN 2D cfg=0.20 | `checkpoints/2026-02-11-23-00-16-.../best_checkpoint.pt` |
+| GemNet-OC (relaxation) | `gemnet_oc_base_s2ef_2M.pt` |
+
+---
+
 ## Acknowledgements
 This codebase was built on top of [ocp](https://github.com/Open-Catalyst-Project/ocp), [Open-Catalyst-Dataset](https://github.com/Open-Catalyst-Project/Open-Catalyst-Dataset) repositories as well as adapting code from [DiffDock](https://github.com/gcorso/DiffDock) and [AdsorbML](https://github.com/Open-Catalyst-Project/AdsorbML). Please cite these works as well!
