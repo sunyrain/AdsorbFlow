@@ -1,308 +1,320 @@
 # AdsorbFlow 实验 TODO 清单
 
-> 最后更新: 2026-02-13
-> 本文档列出所有待完成的实验，按优先级排序。
-> 在 AdsorbFlow 工作区中调用 Copilot 进行具体部署。
+> 最后更新: 2026-02-16
+> 本文档列出所有实验进度、已完成的结果、以及待完成的任务。
 
 ---
 
-## 现有资产盘点
+## 一、核心结果总览
 
-> **实验文件已按模型/配置组织到 `experiments/` 目录，详见 [`experiments/README.md`](experiments/README.md)**
+### 1.1 MLFF Grid Search 最佳结果（nsites=10, 44 systems）
 
-### 已训练的模型检查点
+| 模型 | p_cfg | Epoch | 最佳 w | 最佳 K | SR@1 | SR@5 | SR@10 | ΔE_mean | 状态 |
+|------|-------|-------|--------|--------|------|------|-------|---------|------|
+| **EqV2-2D** | 0.20 | 180 | 7 | 5 | 29.5% | 56.8% | **72.7%** | — | ✅ |
+| **EqV2-3D** | 0.20 | 208 | 7 | 30 | 34.1% | 56.8% | **72.7%** | 0.320 | ✅ |
+| **EqV2-3D** | 0.20 | 187 | 7 | 5 | 38.6% | 56.8% | **70.5%** | 0.342 | ✅ |
+| PaiNN-3D | 0.25 | 300 | 3 | 10 | 22.7% | 56.8% | 65.9% | — | ✅ (test_0.25) |
+| PaiNN-3D | 0.20 | best | 1 | 30 | 29.5% | 52.3% | 63.6% | 0.515 | ✅ |
+| **PaiNN-2D** | 0.20 | best | 5 | 5 | 22.7% | 50.0% | **63.6%** | 0.398 | ✅ |
+| PaiNN-3D | 0.15 | 180 | 3 | 10 | 34.1% | — | — | — | ✅ (nsites=3) |
 
-| ID | Backbone | p_cfg | 最优epoch | 实验目录 | 原始路径 |
-|----|----------|-------|-----------|----------|----------|
-| **PaiNN-3D-0.15** | PaiNN | 0.15 | ep180 (best_posmae) | `experiments/painn_3d_cfg0.15/` | `checkpoints/2025-12-30-00-38-24-...` |
-| **PaiNN-3D-0.20** | PaiNN | 0.20 | ep350 (posmae=0.6921) | `experiments/painn_3d_cfg0.20/` | `checkpoints/2026-02-12-09-14-40-...` |
-| **PaiNN-3D-0.25** | PaiNN | 0.25 | ep400 (posmae=0.5330) | `experiments/painn_3d_cfg0.25/` | `checkpoints/2025-12-30-19-35-28-...` |
-| **PaiNN-3D-0.10** | PaiNN | 0.10 | ep850 (posmae=0.5607) | `experiments/painn_3d_cfg0.10/` | `checkpoints/2025-12-27-09-55-12-...` |
-| **EqV2-3D-0.20** | EqV2 | 0.20 | ep208 (SR=72.7%) | `experiments/eqv2_3d_cfg0.20/` | `checkpoints/2026-01-13-23-21-36-...` |
-| **PaiNN-2D-0.20** | PaiNN | 0.20 | ep281 (posmae=0.5626) | `experiments/painn_2d_cfg0.20/` | `checkpoints/2026-02-11-23-00-16-...` |
+### 1.2 VASP DFT 单点能验证 — 旧方法（best-per-level，异常过滤）
 
-### 已有 Grid Search 结果
+> 判定标准: `ads_energy - target ≤ 0.1 eV`（AdsorbML 单侧标准）
+> **注意**: 此表使用旧方法 — 每 SID 选最低 MLFF 能量的 site（best-per-level），SR@k 对 seed 顺序敏感
 
-| 模型 | Epoch | Grid | 最佳结果 | 状态 |
-|------|-------|------|---------|------|
-| PaiNN-3D-0.15 | 155 | w∈{0,1,3} × K=10 | SR=56.8%, ΔE=0.441 | ✅ |
-| PaiNN-3D-0.15 | 180 | w∈{0,1,1.5,3} × K=10 | SR=65.9%, ΔE=0.387 | ✅ |
-| **PaiNN-3D-0.20** | best | w∈{0,1,2,3,5,7,10} × K∈{5,10,30} | **SR=63.6% (w=1,K=30), ΔE=0.515** | ✅ 21/21 |
-| **PaiNN-2D-0.20** | best | w∈{0,1,2,3,5,10} × K∈{5,10,30} | **SR=63.6% (w=5,K=5), ΔE=0.398** | ✅ 18/18 |
-| EqV2-0.20 | 187 | w∈{0,1,2,3,5,7,10} × K∈{5,10,30} | SR=70.5% (w=7,K=5), ΔE=0.342 | ✅ 21/21 |
-| EqV2-0.20 | 208 | w∈{0,1,3,5,7,10,15} × K∈{5,10,30} | **SR=72.7% (w=7,K=30), ΔE=0.320** | ✅ 21/21 |
+| 模型 | Epoch | w | K | SR@1 | SR@2 | SR@5 | SR@10 | MLFF SR@10 | 状态 |
+|------|-------|---|---|------|------|------|-------|------------|------|
+| PaiNN-3D-0.15 | 180 | 3 | 10 | 29.5% (13/44) | 43.2% (19/44) | 52.3% (23/44) | **54.5%** (24/44) | 52.3% (ns3) | ✅ |
+| **EqV2-3D** | 187 | 7 | 5 | 31.8% (14/44) | 38.6% (17/44) | 40.9% (18/44) | **63.6%** (28/44) | 70.5% | ✅ |
+| **EqV2-3D** | 208 | 7 | 5 | 31.8% (14/44) | 40.9% (18/44) | 47.7% (21/44) | **56.8%** (25/44) | 68.2% | ✅ |
+| **EqV2-2D** | 180 | 7 | 5 | — | — | — | **61.4%** (27/44) | 72.7% | ✅ 101 jobs |
 
----
+### 1.3 VASP DFT — 公平评估（Fair SR@k）🔥 进行中
 
-## 📋 实验清单
+> **公平评估方法**: 对每个 SID 的每个 site (seed) 独立做 VASP SP，统计 m=成功 seed 数
+> Fair SR@k = 1 - C(N-m, k) / C(N, k)，其中 N=10（总 seed 数）
+> 这消除了 SR@1 对 seed=0 的依赖，给出无偏期望值
 
-### ═══════════════════════════════════════
-### P0 — 必须完成（论文核心表格缺失数据）
-### ═══════════════════════════════════════
+**MLFF 级别 Fair SR@k（已计算）:**
 
----
+| 模型 | 配置 | Fair SR@1 | Fair SR@5 | Fair SR@10 | 状态 |
+|------|------|----------|----------|-----------|------|
+| EqV2-2D | cfg7_steps5 | 35.2% | 63.1% | 72.7% | ✅ MLFF |
+| PaiNN-2D | cfg5_steps5 | — | — | 63.6% | ⬜ 待算 |
 
-### E1: PaiNN 2D 模型训练 ✅ 已完成
-- **目标**: 训练 allow_z=False 的 PaiNN 模型，用于 2D vs 3D 对比 (论文 Table 2)
-- **配置**: p_cfg=0.20, allow_z=False, tr_sigma_z_scale=0, 2×RTX4090
-- **结果**: 370 epochs 训练，best posmae=0.5626 (epoch 281)，val loss 约 ep150 后开始上升
-- **检查点**: `checkpoints/2026-02-11-23-00-16-z_0_2D_cfg_0.20_tr_3_lr1.5-4/best_checkpoint.pt`
-- **状态**: ✅ 完成 (2026-02-12)
+**VASP 级别 Fair SR@k — 集群计算任务:**
 
----
+| 模型 | 配置 | 总轨迹 | 正常(需VASP) | 异常(跳过) | 已完成 | 新增 | 状态 |
+|------|------|--------|-------------|-----------|--------|------|------|
+| PaiNN-2D | cfg5_steps5 | 440 | 319 | 121 | 0 | **319** | ⬜ 待提交 |
+| EqV2-2D | cfg7_steps5 | 440 | 345 | 95 | 101 | **244** | ⬜ 待提交 |
+| **合计** | | **880** | **664** | **216** | **101** | **563** | |
 
-### E2: PaiNN 2D 模型 Grid Search 评估 ✅ 已完成
-- **目标**: 对 E1 训练好的 2D 模型做 cfg × steps 网格搜索
-- **网格**: w ∈ {0, 1, 2, 3, 5, 10} × K ∈ {5, 10, 30} = 18 组合
-- **结果**: Best SR@10=**63.6%** (w=5, K=5, ΔE=0.398)
-- **结果文件**: `grid_search_runs/2026-02-11-23-00-16-z_0_2D_cfg_0.20_tr_3_lr1.5-4_best_checkpoint/val_nonrelaxed_update/nsites_10/grid_search_results_nsites10.jsonl`
-- **状态**: ✅ 完成 (2026-02-13)
+> 集群估算: 563 VASP SP jobs × ~8 min/job ÷ 80 并发 ≈ **56 min 墙钟时间**
 
----
+### 1.4 异常检测统计（Relaxation Trajectory）
 
-### E3: Anomaly Rate 统计
-- **目标**: 从现有 traj 文件中提取 anomaly rate
-- **对应论文**: Table 2 两行 Anomaly rate 列 (`\emph{pending}`)
-- **依赖**: E2 完成 (2D)；3D 数据已有
-- **方法**: 使用 `scripts/eval.py` 中的 `DetectTrajAnomaly` pipeline
-  ```bash
-  cd /root/autodl-tmp/AdsorbFlow
-  python scripts/eval.py \
-    --traj-dir <grid_search_run_path>/relaxations \
-    --ref-data val_nonrelaxed_update \
-    --report-anomaly
-  ```
-- **需要提取**:
-  - 3D (PaiNN-0.15, epoch180, w=3, K=10) — anomaly rate
-  - 2D (E1 最佳, 最佳 w, K=10) — anomaly rate
-- **预估**: ~30min (纯计算，无需 GPU)
-- **状态**: ❌ 未开始
+**全 seed 异常统计 (Fair Eval 用):**
+
+| 模型 | 配置 | Total | Normal | Anomalous | 异常率 |
+|------|------|-------|--------|-----------|--------|
+| PaiNN-2D | cfg5_steps5 | 440 | 319 | 121 | 27.5% |
+| EqV2-2D | cfg7_steps5 | 440 | 345 | 95 | 21.6% |
+
+**旧 best-per-level 异常统计:**
+
+| 配置 | Level | Total | Anomalous | Normal | dissociated | desorbed | surface_changed | intercalated |
+|------|-------|-------|-----------|--------|-------------|----------|-----------------|-------------|
+| PaiNN ep180 w3 K10 | 10 | 44 | 4 | 40 | 1 | 2 | 0 | 1 |
+| EqV2 ep187 w7 K5 | 10 | 44 | 4 | 40 | 2 | 1 | 1 | 2 |
+| EqV2 ep208 w7 K5 | 10 | 44 | 5 | 39 | 2 | 2 | 1 | 2 |
+| EqV2 ep208 w10 K10 | 10 | 44 | 6 | 38 | 3 | 2 | 1 | 2 |
 
 ---
 
-### E4: 文献查找 — AdsorbML / AdsorbDiff 基线数值
-- **目标**: 从已发表论文中查找 AdsorbML 和 AdsorbDiff 的 SR 数值
-- **对应论文**: Table 1 第1-2行 `\emph{from ref.}` 列
-- **需要查找**:
-  - AdsorbML (Lan et al., 2023): Success Rate @ nsites=10 (0.1 eV tolerance)
-  - AdsorbDiff (Adsorbate Diffusion, 2024): Success Rate @ nsites=10 (0.1 eV tolerance)  
-  - 注意匹配评估条件: OC20-Dense，GemNet-OC MLFF relaxation
-- **来源**:
-  - AdsorbML: https://arxiv.org/abs/2211.16486
-  - AdsorbDiff: https://arxiv.org/abs/2305.03582 (or newer version)
-- **预估**: 1h 查阅论文
-- **状态**: ❌ 未开始
+## 二、已训练模型清单
+
+### 2.1 训练完成
+
+| ID | Backbone | p_cfg | allow_z | Epochs | Best Epoch | Best posmae | ckpt路径前缀 | 状态 |
+|----|----------|-------|---------|--------|------------|-------------|-------------|------|
+| PaiNN-3D-0.10 | PaiNN | 0.10 | True | ~1450 | ep850 | 0.5607 | `2025-12-27-09-55-12-...` | ✅ |
+| PaiNN-3D-0.15 | PaiNN | 0.15 | True | ~550 | ep180 | 0.6214 | `2025-12-30-00-38-24-...` | ✅ |
+| PaiNN-3D-0.25 | PaiNN | 0.25 | True | ~550 | ep400 | 0.5330 | `2025-12-30-19-35-28-...` | ✅ |
+| PaiNN-3D-0.20 | PaiNN | 0.20 | True | ~350 | ep350 | 0.6921 | `2026-02-12-09-14-40-...` | ✅ |
+| PaiNN-2D-0.20 | PaiNN | 0.20 | False | ~370 | ep281 | 0.5626 | `2026-02-11-23-00-16-...` | ✅ |
+| EqV2-3D-0.20 | EqV2 | 0.20 | True | ~215 | ep187/208 | 0.8954/1.1035 | `2026-01-13-23-21-36-...` | ✅ |
+
+### 2.2 训练完成但使用早期 checkpoint
+
+| ID | Backbone | p_cfg | allow_z | 已训Epoch | 使用 Epoch | posmae | 状态 |
+|----|----------|-------|---------|-----------|-----------|--------|------|
+| **EqV2-2D-0.20** | EqV2 | 0.20 | False | 202 (崩溃) | **ep180** | 0.9085 | ✅ 可用 |
+
+> **EqV2-2D**: 训练崩溃于 ep202，但 ep180 ckpt 可用且已完成 Grid Search。
+> Grid search 结果: SR@10=72.7% (cfg7_steps5)，与 EqV2-3D 持平。
+> 日志: `logs/train_eqv2_2d.log`
 
 ---
 
-### ═══════════════════════════════════════
-### P1 — 论文图表完善（支撑分析）
-### ═══════════════════════════════════════
+## 三、Grid Search 详细结果
+
+### 3.1 EqV2-3D ep208（当前最佳模型）— 21 configs
+
+| w | K | SR@1 | SR@5 | SR@10 | union_SR |
+|---|---|------|------|-------|----------|
+| 7 | 30 | 34.1% | 56.8% | **72.7%** | **72.7%** |
+| 3 | 5 | 31.8% | 54.5% | 70.5% | 70.5% |
+| 1 | 10 | 20.5% | 50.0% | 68.2% | 68.2% |
+| 7 | 5 | — | — | 68.2% | 68.2% |
+
+### 3.2 EqV2-3D ep187 — 24 configs
+
+| w | K | SR@1 | SR@5 | SR@10 | union_SR |
+|---|---|------|------|-------|----------|
+| 7 | 5 | 38.6% | 56.8% | **70.5%** | **70.5%** |
+| 2 | 5 | 25.0% | 61.4% | 70.5% | 70.5% |
+| 5 | 5 | 36.4% | 59.1% | 68.2% | 68.2% |
+
+### 3.3 EqV2-2D ep180 — 18 configs 🆕
+
+| w | K | SR@1 | SR@5 | SR@10 | union_SR |
+|---|---|------|------|-------|----------|
+| 7 | 5 | 29.5% | 56.8% | **72.7%** | **72.7%** |
+| 10 | 5 | 29.5% | 56.8% | 63.6% | 63.6% |
+| 1 | 10 | 27.3% | 59.1% | 61.4% | 61.4% |
+| 2 | 10 | 36.4% | 56.8% | 61.4% | 61.4% |
+| 5 | 10 | 29.5% | 54.5% | 61.4% | 61.4% |
+
+### 3.5 PaiNN-2D-0.20 ep_best — 18 configs
+
+| w | K | SR@1 | SR@5 | SR@10 | union_SR |
+|---|---|------|------|-------|----------|
+| 5 | 5 | 22.7% | 50.0% | **63.6%** | **63.6%** |
+| 10 | 5 | 29.5% | 56.8% | 63.6% | 63.6% |
+| 1 | 10 | 27.3% | 59.1% | 61.4% | 61.4% |
+
+### 3.6 PaiNN-3D-0.20 ep_best — 21 configs
+
+| w | K | SR@1 | SR@5 | SR@10 | union_SR |
+|---|---|------|------|-------|----------|
+| 1 | 30 | 29.5% | 52.3% | **63.6%** | **63.6%** |
+| 0 | 30 | 22.7% | 50.0% | 61.4% | 61.4% |
+| 5 | 5 | 22.7% | 54.5% | 61.4% | 61.4% |
+
+### 3.7 PaiNN-3D-0.25 (test_0.25, nsites=10)
+
+| Epoch | Best w | Best K | SR@10 | union_SR |
+|-------|--------|--------|-------|----------|
+| 300 | 3 | 10 | **65.9%** | **65.9%** |
+| 100 | 3 | 10 | 63.6% | 63.6% |
+| 200 | 3 | 10 | 61.4% | 61.4% |
+| 500 | 3 | 10 | 59.1% | 59.1% |
+
+### 3.8 PaiNN-3D-0.15 (早期实验)
+
+| Epoch | nsites | Best w | Best K | SR@10 | union_SR |
+|-------|--------|--------|--------|-------|----------|
+| 70 | 10 | 1 | 10 | 61.4% | 61.4% |
+| 155 | 10 | 0 | 10 | 56.8% | 56.8% |
+| 180 | 3 | 3 | 10 | — | 52.3% |
+
+### 3.9 PaiNN-3D-0.20 (新训 painn) ep150/ep200
+
+| Epoch | Best w | Best K | SR@10 | union_SR |
+|-------|--------|--------|-------|----------|
+| best(0) | 1 | 30 | 63.6% | 63.6% |
+| 150 | 0 | 5 | 61.4% | 61.4% |
+| 200 | 1 | 5 | 56.8% | 56.8% |
 
 ---
 
-### E5: PaiNN 3D 补充 Grid Search (更多 steps 点)
-- **目标**: 当前 PaiNN 只有 K=10 的结果，需补充更多推理步数的数据点
-- **对应论文**: Table 1 PaiNN 行；Fig 2 accuracy-efficiency frontier
-- **依赖**: 无（使用现有 PaiNN-0.15 epoch180 检查点）
-- **网格**: w=3 (固定最佳), K ∈ {1, 3, 5, 20, 30, 50}
-- **命令**:
-  ```bash
-  CKPT=checkpoints/2025-12-30-00-38-24-z_0.3_geo_lift0_cfg_0.15_tr_3_t_opt_I_500_lr1.5-4_para_no_lesson/best_checkpoint.pt
-  
-  for K in 1 3 5 20 30 50; do
-    python -u -m torch.distributed.launch \
-      --nproc_per_node=1 --master_port=1234 \
-      main.py --mode run-relaxations \
-      --config-yml configs/flow/painn_conditional_flow.yml \
-      --checkpoint $CKPT \
-      --task.relax_opt.traj_dir=grid_search_runs/painn_0.15_ep180_w3_K${K} \
-      --task.relax_opt.cfg_scale=3 \
-      --task.relax_opt.num_steps=$K \
-      --distributed --model.sampling=True --debug
-  done
-  ```
-- **注意**: 需确认 best_checkpoint.pt 对应的 epoch 以及使用哪个 epoch 的检查点 (epoch180 对应的在 grid_search_runs 里已有结果)
-- **预估**: 6 × ~15min = ~1.5h
-- **状态**: ❌ 未开始
+## 四、实验任务清单
 
----
+### ═══════════════════ P0: 核心完成 ═══════════════════
 
-### E6: PaiNN p_cfg 消融实验 Grid Search
-- **目标**: 对比 p_cfg=0.10 / 0.15 / 0.25 三组 CFG dropout 的效果
-- **对应论文**: Discussion / Ablation 分析 (CFG guidance strength)
-- **依赖**: 无（使用现有检查点）
-- **方法**: 对 p_cfg=0.10 和 p_cfg=0.25 的检查点运行同样的 grid search
-  ```bash
-  # p_cfg=0.10 (epoch850 - 最低 posmae)
-  CKPT_010=checkpoints/2025-12-27-09-55-12-z_0.3_geo_lift0_cfg_0.10_tr_3_t_opt_pbc_I_lr1.5-4_para_no_lesson/epoch0850_unweightedvalloss1.5183_posmae0.5607.pt
-  
-  for w in 0 1 3 5; do
-    for K in 5 10 30; do
-      python -u -m torch.distributed.launch \
-        --nproc_per_node=1 --master_port=1234 \
-        main.py --mode run-relaxations \
-        --config-yml configs/flow/painn_conditional_flow.yml \
-        --checkpoint $CKPT_010 \
-        --task.relax_opt.traj_dir=grid_search_runs/painn_0.10_ep850_w${w}_K${K} \
-        --task.relax_opt.cfg_scale=$w \
-        --task.relax_opt.num_steps=$K \
-        --distributed --model.sampling=True --debug
-      done
-  done
-  
-  # p_cfg=0.25 (epoch400 - 最低 posmae)
-  CKPT_025=checkpoints/2025-12-30-19-35-28-z_0.3_geo_lift0_cfg_0.25_tr_3_t_opt_I_500_lr1.5-4_para_no_lesson/epoch0400_unweightedvalloss1.1710_posmae0.5330.pt
-  
-  for w in 0 1 3 5; do
-    for K in 5 10 30; do
-      python -u -m torch.distributed.launch \
-        --nproc_per_node=1 --master_port=1234 \
-        main.py --mode run-relaxations \
-        --config-yml configs/flow/painn_conditional_flow.yml \
-        --checkpoint $CKPT_025 \
-        --task.relax_opt.traj_dir=grid_search_runs/painn_0.25_ep400_w${w}_K${K} \
-        --task.relax_opt.cfg_scale=$w \
-        --task.relax_opt.num_steps=$K \
-        --distributed --model.sampling=True --debug
-      done
-  done
-  ```
-- **预估**: 2 × 12 组合 × ~15min = ~6h
-- **注意**: p_cfg=0.25 已有部分 test_0.25_* 结果在 grid_search_runs，需先检查覆盖情况
-- **状态**: ❌ 未开始
+| ID | 任务 | 状态 | 备注 |
+|----|------|------|------|
+| E1 | PaiNN 2D 训练 | ✅ 完成 | 370 ep, best ep281 |
+| E2 | PaiNN 2D Grid Search | ✅ 完成 | SR@10=63.6% (w=5,K=5) |
+| E2b | EqV2 3D Grid Search | ✅ 完成 | SR@10=72.7% (ep208 w7 K30) |
+| E2c | PaiNN 3D cfg0.20 Grid Search | ✅ 完成 | SR@10=63.6% (w1 K30) |
+| E2d | EqV2 2D Grid Search | ✅ 完成 | SR@10=72.7% (ep180 w7 K5) 🆕 |
+| V1 | VASP PaiNN ep180 w3 K10 | ✅ 完成 | SR@10=54.5% (24/44) |
+| V2 | VASP EqV2 ep187 w7 K5 | ✅ 完成 | SR@10=63.6% (28/44) |
+| V3 | VASP EqV2 ep208 w7 K5 | ✅ 完成 | SR@10=56.8% (25/44) |
+| V4 | VASP EqV2-2D ep180 best-per-level | ✅ 完成 | SR@10=61.4% (27/44), 101 jobs 🆕 |
+| C1 | CPU 集群连通性测试 | ✅ 完成 | 2 jobs 已验证，能量差 <0.007 eV 🆕 |
 
----
+### ═══════════════════ P0.5: 公平评估 VASP 🔥 ═══════════════════
 
-### ═══════════════════════════════════════
-### P2 — 图表制作与论文细节
-### ═══════════════════════════════════════
+> **目标**: 对所有 2D 模型的每个 (SID, site) 组合独立做 VASP SP，计算 Fair SR@k
 
----
+| ID | 任务 | 状态 | 备注 |
+|----|------|------|------|
+| **F1** | **生成 PaiNN-2D VASP 输入 (319 jobs)** | ⬜ 未开始 | 从 relaxation 最终结构提取 POSCAR |
+| **F2** | **生成 EqV2-2D 新增 VASP 输入 (244 jobs)** | ⬜ 未开始 | 已有 101 best-per-level 可复用 |
+| **F3** | **打包上传至集群** | ⬜ 未开始 | tar.gz → scp → /public/home/qiujiangjie/adsorbFlow/ |
+| **F4** | **集群提交 563 VASP SP jobs** | ⬜ 未开始 | batch2 分区, ~56 min 墙钟 |
+| **F5** | **下载结果并解析** | ⬜ 未开始 | unpack_and_analyze.py |
+| **F6** | **计算 Fair VASP SR@k** | ⬜ 未开始 | compute_fair_sr.py (VASP 版) |
 
-### E7: 制作 Fig 1 — AdsorbFlow 方法概览图
-- **目标**: 方法流程图 (input → flow matching → relaxation → evaluation)
-- **对应论文**: `\includegraphics{fig1_adsorbflow_overview.pdf}` (当前被注释)
-- **工具**: matplotlib / tikz / draw.io
-- **内容**: 
-  - 左: 催化剂表面 + 吸附物 (初始随机位姿 → 目标位姿)
-  - 中: Flow matching ODE 积分示意 (t=0 → t=1)
-  - 右: CFG guidance 条件能量信号
-  - 下: PaiNN vs EqV2 backbone 对比
-- **状态**: ❌ 未开始
-
----
-
-### E8: 制作 Fig 2 — Accuracy-Efficiency Frontier
-- **目标**: SR@10 vs 推理步数 K 的曲线图
-- **对应论文**: `\includegraphics{fig2_steps_frontier.pdf}` (当前被注释)
-- **依赖**: E5 完成 (PaiNN更多K点)
-- **数据**:
-  - EqV2 (w=7): K=5 → 70.5%, K=10 → 65.9%, K=30 → 63.6% (epoch187)
-  - EqV2 (w=7): K=5 → 68.2%, K=10 → 65.9%, K=30 → 72.7% (epoch208)
-  - PaiNN (w=3): K=10 → 65.9% (epoch180), 其余待 E5 补充
-- **状态**: ❌ 未开始
-
----
-
-### E9: 制作 Fig 3 — 3D Case Studies
-- **目标**: 可视化若干成功放置案例 (分子在表面上的位姿)
-- **对应论文**: `\includegraphics{fig3_3d_case_studies.pdf}` (当前被注释)
-- **工具**: ASE + matplotlib 可视化 traj 文件
-- **数据**: 从 grid_search_runs 中选取典型成功/失败案例
-- **状态**: ❌ 未开始
-
----
-
-### E10: 制作 Fig 4 — CFG Guidance 效果对比
-- **目标**: 展示不同 guidance scale w 对生成质量的影响
-- **对应论文**: `\includegraphics{fig4_closed_loop.pdf}` (当前被注释)
-- **数据**: EqV2 grid search 的 w=0/3/7/10 对比热力图或柱状图
-- **状态**: ❌ 未开始
-
----
-
-### ═══════════════════════════════════════
-### P3 — 论文元数据（非实验）
-### ═══════════════════════════════════════
-
----
-
-### M1: 填写作者信息
-- **位置**: sn-article.tex L44-56
-- **内容**: 真实作者姓名、邮箱、机构地址
-- **状态**: ❌ 待填写
-
-### M2: 填写致谢和作者贡献
-- **位置**: sn-article.tex L335, L338
-- **内容**: 资助来源、计算资源、CRediT 作者贡献
-- **状态**: ❌ 待填写
-
-### M3: 完善参考文献
-- **位置**: sn-article.tex L349 (PaiNN 条目)
-- **内容**: 补充完整引用格式
-- **状态**: ❌ 待填写
-
----
-
-## 执行顺序建议
-
+**任务量统计:**
 ```
-阶段 1 (最紧迫):
-  E1 (训练 2D PaiNN) ──────────────────── ~12h GPU
-  E4 (查文献填基线)  ──────────────────── ~1h 人工
-     ↓
-阶段 2 (E1完成后):
-  E2 (2D Grid Search) ─────────────────── ~3h GPU
-  E5 (PaiNN补充步数) ──── 可与E2并行 ──── ~1.5h GPU
-     ↓
-阶段 3:
-  E3 (Anomaly Rate) ───────────────────── ~0.5h CPU
-  E6 (p_cfg消融) ──────────────────────── ~6h GPU (可选)
-     ↓
-阶段 4 (数据齐全后):
-  E7-E10 (制图) ───────────────────────── ~1天
-  M1-M3 (元数据) ──────────────────────── ~0.5h
+PaiNN-2D cfg5_steps5:  44 SIDs × 10 sites = 440 total
+  → 319 normal (需 VASP) + 121 anomalous (跳过)
+  → 0 已完成, 319 新增
+
+EqV2-2D cfg7_steps5:   44 SIDs × 10 sites = 440 total
+  → 345 normal (需 VASP) + 95 anomalous (跳过)
+  → 101 已完成 (best-per-level), 244 新增
+
+总计: 664 VASP jobs 需要, 563 新增待运行
 ```
 
-## 总 GPU 时间预估
+### ═══════════════════ P1: 补充实验 ═══════════════════
 
-| 实验 | GPU 时间 | 优先级 |
-|------|---------|--------|
-| E1 训练 | ~12h | P0 |
-| E2 2D Grid Search | ~3h | P0 |
-| E3 Anomaly | ~0.5h (CPU) | P0 |
-| E5 PaiNN 补充 K | ~1.5h | P1 |
-| E6 p_cfg 消融 | ~6h | P1 (可选) |
-| **总计** | **~23h GPU** | |
+| ID | 任务 | 状态 | 备注 |
+|----|------|------|------|
+| E3 | Anomaly Rate 全量统计 | ✅ 完成 | PaiNN-2D 27.5%, EqV2-2D 21.6% 🆕 |
+| E4 | AdsorbML/AdsorbDiff 基线 | ❌ 未开始 | 需查论文 |
+| E5 | PaiNN 补充 K 点 (K∈{1,3,5,20,30,50}) | ❌ 未开始 | ~1.5h GPU |
+| E6 | PaiNN p_cfg 消融 (0.10/0.15/0.25) | ❌ 未开始 | ~6h GPU |
+
+### ═══════════════════ P2: 图表制作 ═══════════════════
+
+| ID | 任务 | 状态 | 依赖 |
+|----|------|------|------|
+| E7 | Fig 1 方法概览图 | ❌ | 无 |
+| E8 | Fig 2 Accuracy-Efficiency Frontier | ❌ | E5 |
+| E9 | Fig 3 3D Case Studies | ❌ | 无 |
+| E10 | Fig 4 CFG 效果对比 | ❌ | 无 |
+
+### ═══════════════════ P3: 论文元数据 ═══════════════════
+
+| ID | 任务 | 状态 |
+|----|------|------|
+| M1 | 填写作者信息 | ❌ |
+| M2 | 致谢和作者贡献 | ❌ |
+| M3 | 完善参考文献 | ❌ |
 
 ---
 
-## 快速检查命令
+## 五、Checkpoint 存储状态
 
-```bash
-# 进入工作目录
-cd /root/autodl-tmp/AdsorbFlow
+| 目录前缀 | 描述 | Epoch 文件数 | 大小(估) |
+|----------|------|------------|---------|
+| `2025-12-27-09-55-12-` | PaiNN-3D cfg0.10 | 31 | ~3GB |
+| `2025-12-30-00-38-24-` | PaiNN-3D cfg0.15 | 13 | ~1.5GB |
+| `2025-12-30-19-35-28-` | PaiNN-3D cfg0.25 | 13 | ~1.5GB |
+| `2026-01-13-20-56-32-` | EqV2-3D (仅 checkpoint.pt) | 1 | ~525MB |
+| `2026-01-13-23-21-36-` | EqV2-3D (主力, ep187/208 已保护) | 48 | ~6.8GB |
+| `2026-02-11-23-00-16-` | PaiNN-2D | 9 | ~1GB |
+| `2026-02-12-09-14-40-` | PaiNN-3D cfg0.20 | 9 | ~1GB |
+| `2026-02-14-11-05-36-` | EqV2-2D (已崩溃) | 45 | ~6.3GB |
 
-# 检查 GPU
-nvidia-smi
+> ⚠️ 磁盘使用约 197G/245G (81%)。PaiNN ckpts (cfg0.10/0.15/0.25) 可考虑清理。
 
-# 检查 PyTorch
-python3 -c "import torch; print('CUDA:', torch.cuda.is_available(), 'GPUs:', torch.cuda.device_count())"
+---
 
-# 检查数据
-ls train_split/ val_split/ val_nonrelaxed_update/
+## 六、执行优先级
 
-# 检查现有检查点
-ls checkpoints/
+```
+🔥 立即 (公平评估 VASP):
+  F1: 生成 PaiNN-2D VASP 输入 (319 jobs)
+  F2: 生成 EqV2-2D 新增 VASP 输入 (244 jobs)
+  F3: 打包上传至 CPU 集群
+  F4: 集群提交 563 VASP SP jobs (~56 min)
+  F5: 下载结果
+  F6: 计算 Fair VASP SR@k
 
-# 检查已有结果
-ls grid_search_runs/
+⏳ 结果出来后:
+  E4: 查找文献基线 (AdsorbML/AdsorbDiff)
+  E5 → E8 (Fig 2: Accuracy-Efficiency Frontier)
 
-# 查看某个 grid search 的结果
-cat grid_search_runs/<run_dir>/results.jsonl | python3 -m json.tool
+📊 图表制作:
+  E7, E9, E10 (方法图/Case Studies/CFG效果)
+  M1-M3 (论文元数据)
 ```
 
 ---
 
-*本文档由 Copilot 自动生成，请在实验文件夹中调用 Copilot 进行具体实验部署。*
+## 七、CPU 集群信息
+
+| 项目 | 值 |
+|------|-----|
+| 地址 | 166.111.35.183:31125 |
+| 用户 | qiujiangjie |
+| 节点数 | 31 × 64 cores × 251GB |
+| 调度器 | SLURM |
+| 分区 | batch2 (主), batch* (21 idle) |
+| VASP | 6.1.1 (`module load intel2020u2 vasp.6.1.1`) |
+| Module 初始化 | `source /public/software/modules-5.3.1/init/bash` |
+| 工作目录 | `/public/home/qiujiangjie/adsorbFlow/` |
+| 能量验证 | 集群 vs 本地差异 < 0.007 eV (可忽略) |
+
+---
+
+## 八、关键文件索引
+
+| 文件 | 说明 |
+|------|------|
+| `scripts/run_vasp_dft/run_vasp_ep187_cfg7_steps5.py` | VASP SP 生成+执行脚本 (3D) |
+| `scripts/run_vasp_dft/run_vasp_eqv2_2d_ep180_cfg7_steps5.py` | VASP SP 生成+执行 (EqV2-2D) |
+| `scripts/run_vasp_dft/analyze_multisite_results.py` | VASP 结果分析（含异常过滤） |
+| `scripts/cluster_vasp/pack_vasp_inputs.py` | 打包 VASP 输入至 tar.gz |
+| `scripts/cluster_vasp/cluster_submit.sh` | 集群 SLURM 提交脚本 |
+| `scripts/cluster_vasp/pack_vasp_outputs.sh` | 集群端打包 VASP 输出 |
+| `scripts/cluster_vasp/unpack_and_analyze.py` | 解包+分析集群 VASP 结果 |
+| `scripts/cluster_vasp/compute_fair_sr.py` | 公平 SR@k 计算（解析公式法） |
+| `scripts/cleanup_eqv2_ckpts.py` | Checkpoint 清理脚本 |
+| `oc20_dense_mappings/oc20dense_ref_energies.pkl` | 参考能量（sid→ref_energy） |
+| `oc20_dense_mappings/oc20dense_targets.pkl` | DFT 目标值（sid→target） |
+| `configs/flow/painn_conditional_flow.yml` | PaiNN 训练/推理配置 |
+| `configs/flow/eqv2_conditional_flow.yml` | EqV2 训练/推理配置 |
+
+---
+
+*本文档由 Copilot 自动生成，最后更新 2026-02-16。*

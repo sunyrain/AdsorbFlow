@@ -6,7 +6,17 @@ logs
 *.traj
 *.sh
 grid_search_runs
+grid_search_runs_ood
 exports
+archives/
+vasp_fair_all2d/
+vasp_fair_all2d.tar.gz
+vasp_ood_results/
+so3_precompute/
+oc20_dense_mappings/
+Open-Catalyst-Dataset/
+experiments/
+EXPERIMENT_TODO.md.bak
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
