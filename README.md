@@ -18,6 +18,10 @@ including training code, flow samplers, MLFF relaxation utilities, anomaly
 detection, OC20-Dense preprocessing scripts, grid-search evaluation, and
 DFT-oriented analysis scripts.
 
+<p align="center">
+  <img src="assets/fig1_pse_workflow.png" alt="AdsorbFlow workflow and model architecture" width="900">
+</p>
+
 ## What AdsorbFlow Does
 
 AdsorbFlow targets one upstream bottleneck in computational heterogeneous
@@ -228,17 +232,18 @@ process-screening workflows.
 
 ## Citation
 
-If you use this repository, please cite the AdsorbFlow manuscript and the
-upstream projects listed below. The AdsorbFlow citation will be updated when
-the final bibliographic record is available.
+If you use this repository, please cite the AdsorbFlow arXiv preprint and the
+upstream projects listed below.
 
 ```bibtex
-@article{qiu2026adsorbflow,
-  title  = {AdsorbFlow: energy-conditioned deterministic transport for catalyst screening in artificial intelligence-driven materials-reaction-process design},
-  author = {Qiu, Jiangjie and Li, Wentao and Chen, Honghao and Zhao, Leyi and Wang, Xiaonan},
-  journal = {Chinese Journal of Chemical Engineering},
-  year   = {2026},
-  note   = {submitted}
+@misc{qiu2026adsorbflow,
+  title         = {AdsorbFlow: energy-conditioned flow matching enables fast and realistic adsorbate placement},
+  author        = {Jiangjie Qiu and Wentao Li and Honghao Chen and Leyi Zhao and Xiaonan Wang},
+  year          = {2026},
+  eprint        = {2602.19289},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  url           = {https://arxiv.org/abs/2602.19289}
 }
 ```
 
