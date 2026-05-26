@@ -22,6 +22,18 @@ DFT-oriented analysis scripts.
   <img src="assets/fig1_pse_workflow.png" alt="AdsorbFlow workflow and model architecture" width="900">
 </p>
 
+## Documentation
+
+| File | Purpose |
+|---|---|
+| `DATA.md` | Dataset, checkpoint, and artifact placement |
+| `REPRODUCIBILITY.md` | End-to-end reproduction workflow |
+| `MODEL_CARD.md` | Intended use, limitations, and evaluation scope |
+| `PAPER_RESULTS.md` | Manuscript result tables and audit notes |
+| `EXPERIMENT_COMMANDS.md` | Public command templates |
+| `docs/REPOSITORY_STRUCTURE.md` | Directory-level repository map |
+| `SECURITY.md` | What must not be committed to the public repository |
+
 ## What AdsorbFlow Does
 
 AdsorbFlow targets one upstream bottleneck in computational heterogeneous
@@ -219,7 +231,9 @@ scripts/
   run_vasp_dft/             VASP execution helpers
   grid_search_cfg_flow.py   MLFF grid search over guidance and step count
 PAPER_RESULTS.md            detailed experimental notes and result tables
-EXPERIMENT_COMMANDS.md      historical command log
+EXPERIMENT_COMMANDS.md      reproducible command templates
+DATA.md                     data and checkpoint placement guide
+REPRODUCIBILITY.md          end-to-end reproduction notes
 ```
 
 ## Notes On Scope

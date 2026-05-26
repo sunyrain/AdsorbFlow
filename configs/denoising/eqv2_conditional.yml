@@ -1,12 +1,12 @@
 trainer: adsorbdiff.trainers.sde_denoising_trainer.DenoisingTrainer
 
 dataset:
-  - src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/train_allE
-  #- src: /home/jovyan/repos/ocp-modeling/data/is2re/all/train
-  #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/train
-  #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs/train_oc20dense_rs_overfit
+  - src: train_allE
+  #- src: train_split
+  #- src: train_split
+  #- src: train_split
     normalize_labels: False
-  - src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/val_allE
+  - src: val_split
 
 logger:
   name: wandb
@@ -19,18 +19,18 @@ task:
   eval_on_free_atoms: True
   relaxation_steps: 300
   relaxation_fmax: 0.01
-  relax_dataset: 
-        #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs/rand1_I1
-        #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_corr/train_oc20dense_rs
-        #src: /home/jovyan/shared-scratch/adeesh/denoising/com_denoising/com-xy_std0.01-10_numstep50x10_lr1.e-4_allcorr/final_struct_lmdb
-        src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/val_nonrelaxed
+  relax_dataset:
+        #src: val_nonrelaxed_update
+        #src: train_split
+        #src: relax_opt
+        src: val_nonrelaxed_update
   relax_opt:
         maxstep: 0.04
         memory: 50
         damping: 1.0
         alpha: 70.0
-        #traj_dir: /home/jovyan/shared-scratch/adeesh/denoising/com_sde/bysigma_lmdbcorr_std0.1-10_numstep100_sample1
-        traj_dir: /home/jovyan/shared-scratch/adeesh/denoising/overfit_sde_val44/debug
+        #traj_dir: relax_opt
+        traj_dir: relax_opt
   primary_metric: loss
 hide_eval_progressbar: False
 
@@ -77,7 +77,7 @@ model:
 
   weight_init:              'uniform'    # ['uniform', 'normal']
   so3_denoising:            True
-  FOR_denoising:            True 
+  FOR_denoising:            True
   energy_encoding:          scalar
 
 optim:
@@ -96,7 +96,7 @@ optim:
     lambda_type: cosine
     warmup_factor: 0.2 #0.2
     warmup_epochs: 4 #0.5
-    lr_min_factor: 0.01         
+    lr_min_factor: 0.01
 
   max_epochs: 100000
   force_coefficient: 100
@@ -107,11 +107,11 @@ optim:
   loss_force: l2mae
 
   eval_every: 10000
-  checkpoint_every: 1000 
+  checkpoint_every: 1000
 
   # for denoising positions
   use_denoising_pos:            True
-  denoising_pos_params:         
+  denoising_pos_params:
     prob:                       1      # probability to switch between denoising positions and S2EF
     fixed_noise_std:            False
     num_steps:                  100

@@ -5,13 +5,13 @@
 原理:
   每个 SID 有 N=10 个独立种子（site_idx 0-9），每次都做了 MLFF 弛豫。
   对每个种子独立判定是否成功（MLFF energy ≤ target + 0.1）。
-  
+
   SR@k 的含义："随机从 N 个种子中选 k 个，至少一个成功的概率"
-  
+
   解析公式:
     P(SID 成功 | k) = 1 - C(N-m, k) / C(N, k)
     其中 m = 该 SID 在 N 次中成功的次数
-    
+
   SR@k = Σ P(SID 成功 | k) / total_SIDs
 
 用法:
@@ -83,7 +83,7 @@ def check_anomaly(traj_path, sid):
 def compute_per_seed_success(cfg_dir, nsites=10):
     """
     对每个 SID、每个 seed 独立判定 MLFF 预测是否成功。
-    
+
     返回:
         sid_seed_success: {sid: [bool, bool, ..., bool]}  长度=nsites
         total_sids: int
@@ -154,10 +154,10 @@ def compute_per_seed_success(cfg_dir, nsites=10):
 def analytical_sr_at_k(sid_seed_success, total_sids, k, N=10):
     """
     使用解析公式计算公平的 SR@k
-    
+
     P(SID 成功 | k) = 1 - C(N-m, k) / C(N, k)
     其中 m = 该 SID 的成功种子数
-    
+
     当 N-m < k 时，C(N-m, k) = 0，P = 1 (必然成功)
     """
     total_prob = 0.0
@@ -176,7 +176,7 @@ def analytical_sr_at_k(sid_seed_success, total_sids, k, N=10):
 
 def sequential_sr_at_k(sid_seed_success, total_sids, k):
     """
-    传统顺序 SR@k (与 grid_search 脚本一致): 
+    传统顺序 SR@k (与 grid_search 脚本一致):
     SR@k = |{sid: ∃ seed < k, success}| / total_sids
     """
     success_count = 0

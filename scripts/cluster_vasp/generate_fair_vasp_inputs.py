@@ -4,7 +4,7 @@
 
 用法:
     python scripts/cluster_vasp/generate_fair_vasp_inputs.py \
-        --output-dir /root/autodl-tmp/AdsorbFlow/vasp_fair_all2d \
+        --output-dir vasp_fair_all2d \
         --output-tar vasp_fair_all2d.tar.gz
 """
 
@@ -24,7 +24,7 @@ _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 sys.path.insert(0, _PROJECT_ROOT)
 sys.path.append(os.path.join(_PROJECT_ROOT, "Open-Catalyst-Dataset"))
 
-os.environ["VASP_PP_PATH"] = "/root/autodl-tmp/potpaw_PBE_54"
+os.environ.setdefault("VASP_PP_PATH", os.path.join(_PROJECT_ROOT, "potpaw_PBE_54"))
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
 from ocdata.utils.vasp import write_vasp_input_files
@@ -252,7 +252,7 @@ def main():
         tar_size_mb = os.path.getsize(args.output_tar) / (1024 * 1024)
         print(f"  Done: {args.output_tar} ({tar_size_mb:.1f} MB)")
 
-    print(f"\n  Next: scp {args.output_tar} qiujiangjie@166.111.35.183:/public/home/qiujiangjie/adsorbFlow/")
+    print(f"\n  Next: transfer {args.output_tar} to your VASP cluster and submit the listed tasks.")
 
 
 if __name__ == "__main__":

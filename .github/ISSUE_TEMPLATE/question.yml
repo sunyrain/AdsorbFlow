@@ -1,0 +1,26 @@
+name: Question
+description: Ask about setup, data preparation, checkpoints, or evaluation
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Please include the relevant script, config, or result table if applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What have you tried so far?
+  - type: checkboxes
+    id: docs
+    attributes:
+      label: Documentation checked
+      options:
+        - label: README.md
+        - label: DATA.md
+        - label: REPRODUCIBILITY.md
+        - label: MODEL_CARD.md

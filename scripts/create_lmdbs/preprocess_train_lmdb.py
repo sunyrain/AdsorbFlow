@@ -32,7 +32,7 @@ def write_images_to_lmdb(mp_arg):
         # try:
         sid = sys_id.strip()
         traj_dir = (
-            f"/home/jovyan/shared-scratch/adeesh/data/oc20_dense/trajs/{sid}"
+            f"oc20_dense/trajs/{sid}"
         )
         traj_files = glob.glob(traj_dir + "/*[!surface].traj")
         energies = np.array(
@@ -77,12 +77,12 @@ def get_parser():
     parser.add_argument(
         "--txt-path",
         required=False,
-        default="/home/jovyan/shared-scratch/adeesh/data/oc20_dense/unique_train_system_id.txt",
+        default="oc20_dense/unique_train_system_id.txt",
     )
     parser.add_argument(
         "--out-path",
         required=False,
-        default="/home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/val",
+        default="oc20_dense/lmdbs_train_subsplits/val",
         help="Directory to save extracted features. Will create if doesn't exist",
     )
     parser.add_argument(
@@ -114,12 +114,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.tags:
-        tag_path = "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/oc20dense_tags.pkl"
+        tag_path = "oc20_dense/oc20dense_tags.pkl"
         with open(os.path.join(tag_path), "rb") as h:
             tags_map = pickle.load(h)
 
     with open(
-        "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/oc20dense_mapping.pkl",
+        "oc20_dense/oc20dense_mapping.pkl",
         "rb",
     ) as f:
         oc20_dense_mapping = pickle.load(f)

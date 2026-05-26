@@ -199,10 +199,10 @@ class AdsorbDiffCalculator(Calculator):
             transform=None,
             logger=None,
         )
-        
+
         if self.trainer.ema:
             self.trainer.ema.restore()
-            
+
         atoms = batch_to_atoms(relaxed_batch)
         if len(atoms) == 1:
             return atoms[0]

@@ -201,17 +201,25 @@ class MeanFlowTrainer(OCPTrainer):
         rot_clip = flow_cfg.get("rot_clip", None)
         self.rot_clip = float(rot_clip) if rot_clip is not None else None
         self.grad_norm_guard = float(flow_cfg.get("grad_norm_guard", 0.0))
-        
+
         # --- Curriculum Learning for Loss Weighting ---
         # Start (t=1 emphasis): 0.5 helps learn the global flow from noise.
         # End (t=0 emphasis): -0.5 helps refine the fine structure near data.
         self.fm_endpoint_weight_start = float(flow_cfg.get("endpoint_weight_exponent", 0))
         self.fm_endpoint_weight_target = float(flow_cfg.get("endpoint_weight_target",  0))
         self.fm_endpoint_weight_exponent = self.fm_endpoint_weight_start
-        
+
+        # Rotation loss weight: rebalance rad-scale rotation MSE vs A-scale
+        # translation MSE. Setting this to (tr_sigma / rot_sigma)^2 makes the
+        # two channels contribute commensurate gradient magnitudes; default 1.0
+        # preserves backward compatibility.
+        self.rot_loss_weight = float(flow_cfg.get("rot_loss_weight", 1.0))
+
         if distutils.is_master():
             logging.info(f"[MeanFlowTrainer] Loss Weight Schedule: {self.fm_endpoint_weight_start} -> {self.fm_endpoint_weight_target}")
-            
+            if self.rot_loss_weight != 1.0:
+                logging.info(f"[MeanFlowTrainer] rot_loss_weight = {self.rot_loss_weight}")
+
         self.evaluator = Evaluator(task=self.name)
         self.ema = None
         p_cfg = float(self.config["optim"].get("p_cfg", 0.15))
@@ -1631,7 +1639,7 @@ class MeanFlowTrainer(OCPTrainer):
             combined_mask = combined_clip_mask.to(v_tr.device)
             if combined_mask.shape[0] != v_tr.shape[0]:
                 min_len = min(combined_mask.shape[0], v_tr.shape[0])
-               
+
                 combined_mask = combined_mask[:min_len]
                 if min_len < v_tr.shape[0]:
                     pad = torch.zeros(v_tr.shape[0] - min_len, dtype=torch.bool, device=v_tr.device)
@@ -1658,17 +1666,17 @@ class MeanFlowTrainer(OCPTrainer):
 
         if self.fm_endpoint_weight_exponent != 0.0:
             t_vals = batch.t.squeeze(-1).to(v_tr)
-            
+
             if self.fm_endpoint_weight_exponent > 0.0:
                 # Emphasize t=1 (Noise) -> (1-t)^(-alpha)
                 weight = torch.clamp(1.0 - t_vals, min=1.0e-3)
                 weight = weight.pow(-self.fm_endpoint_weight_exponent)
             else:
 
-                
+
                 weight = torch.clamp(t_vals, min=1.0e-3)
                 weight = weight.pow(self.fm_endpoint_weight_exponent) # exponent is negative here
-                
+
             weight = weight[valid_mask]
             if weight.numel() == 0:
                 loss_tr = diff_tr_valid.new_zeros(())
@@ -1700,7 +1708,7 @@ class MeanFlowTrainer(OCPTrainer):
             "valid_samples": valid_samples,
             "loss_unweighted": loss_unweighted_val,
         }
-        return loss_tr + loss_rot
+        return loss_tr + self.rot_loss_weight * loss_rot
 
     # ---------- D) validate ----------
     @torch.no_grad()
@@ -1715,7 +1723,7 @@ class MeanFlowTrainer(OCPTrainer):
         evaluator = Evaluator(task=self.name)
         rank = distutils.get_rank()
         loader = self.val_loader if split == "val" else self.test_loader
-        
+
         # Grid Search Setup
         grid_cfgs = [1.0]
         grid_steps = [10]
@@ -1723,7 +1731,7 @@ class MeanFlowTrainer(OCPTrainer):
         checkpoint_every_epoch = self.config["optim"].get("checkpoint_every_epoch", 1)
 
         do_grid_search = True # (int(self.epoch) > 0 and int(self.epoch) % checkpoint_every_epoch == 0)
-        
+
         # Limit grid search to ~ 40 samples to save time
         grid_search_samples = 0
         grid_search_limit = 50
@@ -1759,7 +1767,7 @@ class MeanFlowTrainer(OCPTrainer):
                 continue
             if self._should_log_flow_samples():
                 self._log_flow_sample_stats(batch, out, "val")
-            
+
             # --- Grid Search Inference (Subset) ---
             if do_grid_search and grid_search_samples < grid_search_limit:
                 try:
@@ -1769,13 +1777,13 @@ class MeanFlowTrainer(OCPTrainer):
                         inf_batch_base.pos_relaxed = batch.pos_relaxed
                     else:
                         inf_batch_base.pos_relaxed = base_pos # Fallback to what we cloned earlier
-                    
+
                     ads_mask = (batch.tags == 2)
                     if ads_mask.any():
                         # Update sample count
                         current_bs = int(batch.natoms.size(0))
                         grid_search_samples += current_bs
-                        
+
                         for cfg in grid_cfgs:
                             for steps in grid_steps:
                                 # Config for this run
@@ -1788,12 +1796,12 @@ class MeanFlowTrainer(OCPTrainer):
                                     "time_sampl": self.time_sampl,
                                     "allow_z": self.allow_z,
                                 }
-                                
+
                                 # Run inference
                                 # We need to be careful not to modify inf_batch_base in place permanently
                                 # FlowTorch modifies batch.pos.
                                 inf_batch = inf_batch_base.clone()
-                                
+
                                 sampler = FlowTorch(
                                     batch=inf_batch,
                                     model=self.model,
@@ -1803,7 +1811,7 @@ class MeanFlowTrainer(OCPTrainer):
                                     traj_dir=None
                                 )
                                 final_batch = sampler.run()
-                                
+
                                 # Calc Error
                                 gen_pos = final_batch.pos
                                 ref_pos = inf_batch.pos_relaxed
@@ -1814,7 +1822,7 @@ class MeanFlowTrainer(OCPTrainer):
                                 ads_batch = inf_batch.batch[ads_mask]
                                 cell = inf_batch.cell.double()
                                 B_size = int(inf_batch.natoms.size(0))
-                                
+
                                 for b in range(B_size):
                                     mask = (ads_batch == b)
                                     if not mask.any(): continue
@@ -1825,7 +1833,7 @@ class MeanFlowTrainer(OCPTrainer):
                                     diff_wrapped[mask] = cart
 
                                 dist = torch.norm(diff_wrapped, dim=-1)
-                                
+
                                 key = f"cfg{cfg}_step{steps}"
                                 grid_stats[key]["sum"] += dist.sum().item()
                                 grid_stats[key]["count"] += dist.numel()
@@ -1841,7 +1849,7 @@ class MeanFlowTrainer(OCPTrainer):
 
             # if do_grid_search and grid_search_samples >= grid_search_limit:
             #     break
-        
+
         # Aggregate Grid Search Results
         if do_grid_search:
             final_grid_results = {}
@@ -1850,7 +1858,7 @@ class MeanFlowTrainer(OCPTrainer):
                 total_count = distutils.all_reduce(stats["count"], average=False, device=self.device)
                 if total_count > 0:
                     final_grid_results[key] = float(total_sum / total_count)
-            
+
             if distutils.is_master():
                 json_path = os.path.join(self.config["cmd"]["results_dir"], f"val_grid_epoch{self.epoch}.json")
                 try:
@@ -1868,7 +1876,7 @@ class MeanFlowTrainer(OCPTrainer):
             }
             aggregated[k]["metric"] = aggregated[k]["total"] / aggregated[k]["numel"]
         metrics = aggregated
-        
+
         # Inject representative pos_mae into metrics for filename generation
         if do_grid_search:
             rep_key = "cfg1.0_step10"
@@ -1882,7 +1890,7 @@ class MeanFlowTrainer(OCPTrainer):
         if self.logger is not None:
             self.logger.log(log_dict, step=self.step, split=split)
         if self.ema: self.ema.restore()
-        
+
         self._last_val_metrics = metrics
         self._last_val_step = self.step
         return metrics
@@ -2075,12 +2083,12 @@ class MeanFlowTrainer(OCPTrainer):
             loss_tag = "noval" if val_loss is None else "invalid"
         else:
             loss_tag = f"{val_loss:.4f}"
-            
+
         # Add pos_mae to filename if available
         pos_mae = None
         if metrics and "pos_mae" in metrics:
             pos_mae = metrics["pos_mae"].get("metric")
-            
+
         if pos_mae is not None and np.isfinite(pos_mae):
             mae_tag = f"_posmae{pos_mae:.4f}"
         else:

@@ -110,7 +110,7 @@ for sid in sorted(diff_sids):
     print(f"    旧方法测了 site {old_tested} (MLFF排名最优):")
     for site, lev, diff in sorted(old_sid_results.get(sid, [])):
         print(f"      site{site} (level {lev}): diff={diff:.4f} eV ❌ (>{0.1})")
-    
+
     # 旧方法没测到但 Fair 测到的成功 site
     fair_successes = [(site, diff) for site, diff in fair_sid_results.get(sid, []) if diff <= 0.1]
     fair_failures = [(site, diff) for site, diff in fair_sid_results.get(sid, []) if diff > 0.1]
@@ -126,7 +126,7 @@ print("  结论")
 print("=" * 80)
 print("""
   MLFF 层面 SR@10 (union) = 72.7%   ← 三种方法一致 ✓
-  
+
   VASP 层面:
     旧方法 SR@10 = 59.1% (26/44)    ← 不是 union! 只测了 MLFF 最优的 1 个结构
     Fair   SR@10 = 68.18% (30/44)   ← 真正的 VASP union (测了全部 seed)
@@ -135,6 +135,6 @@ print("""
   但其他 MLFF 排名不高的结构 VASP 能量反而符合标准。
   旧方法只测了排名最高的那个 → 漏掉了。
   Fair 方法测了全部 → 捕获到了。
-  
+
   所以 Fair SR@10 > 旧方法 SR@10 是正确的、合理的。
 """)

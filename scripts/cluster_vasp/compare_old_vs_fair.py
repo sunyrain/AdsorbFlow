@@ -131,7 +131,7 @@ def analyze_old_results(ref, targets):
             })
 
     eval_sids = get_eval_sids()
-    
+
     # Compute old SR@k: SID succeeds at level k if any VASP at level ≤ k succeeded
     old_sr = {}
     for k in levels:

@@ -229,7 +229,7 @@ def build_relax_command(args: argparse.Namespace, step_dir: Path) -> List[str]:
 
 def main() -> None:
     args = parse_args()
-    
+
     # Auto-detect model type from checkpoint path if using default
     if args.model_type == "painn":
         # Check if checkpoint path contains eqv2/equiformer keywords
@@ -237,7 +237,7 @@ def main() -> None:
         if "eqv2" in ckpt_path_lower or "equiformer" in ckpt_path_lower:
             args.model_type = "eqv2"
             print(f"[grid-search] Auto-detected model type from checkpoint path: eqv2")
-    
+
     # Auto-detect flow config based on model type if not explicitly specified
     if args.flow_config is None:
         model_type_to_config = {
@@ -246,7 +246,7 @@ def main() -> None:
         }
         args.flow_config = model_type_to_config[args.model_type]
         print(f"[grid-search] Using flow config for {args.model_type}: {args.flow_config}")
-    
+
     flow_checkpoint_path = Path(args.flow_checkpoint)
     if not flow_checkpoint_path.is_absolute():
         flow_checkpoint_path = (REPO_ROOT / flow_checkpoint_path).resolve()
@@ -372,7 +372,7 @@ def main() -> None:
             if args.dry_run:
                 continue
             aggregated = mean(site_success_rates) if site_success_rates else float("nan")
-            
+
             # Calculate cumulative union success rates (Success Rate @ k)
             cumulative_union_success_rates = []
             current_union_sids = set()
@@ -380,7 +380,7 @@ def main() -> None:
                 current_union_sids.update(sids)
                 rate = (len(current_union_sids) / last_total_targets * 100.0) if last_total_targets > 0 else 0.0
                 cumulative_union_success_rates.append(rate)
-            
+
             union_success_rate = cumulative_union_success_rates[-1] if cumulative_union_success_rates else 0.0
             max_single_success_rate = max(site_success_rates) if site_success_rates else 0.0
 

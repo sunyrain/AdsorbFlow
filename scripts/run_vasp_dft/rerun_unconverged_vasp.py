@@ -14,9 +14,9 @@ import signal
 import re
 from datetime import datetime
 
-BASE = "/root/autodl-tmp/AdsorbFlow/grid_search_runs/2026-01-13-23-21-36-z_0.3_geo_lift0_cfg_0.20_tr_3_t_opt_pbc_I_500_lr2.0-4_para_eqv2_epoch0187_unweightedvalloss1.2734_posmae0.8954/val_nonrelaxed_update/nsites_10/cfg7_steps5"
+BASE = "grid_search_runs/2026-01-13-23-21-36-z_0.3_geo_lift0_cfg_0.20_tr_3_t_opt_pbc_I_500_lr2.0-4_para_eqv2_epoch0187_unweightedvalloss1.2734_posmae0.8954/val_nonrelaxed_update/nsites_10/cfg7_steps5"
 
-VASP_CMD = "/root/autodl-tmp/vasp-autodl/vasp.6.3.0/bin/vasp_std"
+VASP_CMD = "vasp_std"
 CORES_PER_JOB = 8
 TIMEOUT = 7200  # 2 hours
 

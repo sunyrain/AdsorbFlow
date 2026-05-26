@@ -401,14 +401,14 @@ def rotate_atoms(atoms):
 if __name__ == "__main__":
 
     tag_path = (
-        "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/oc20dense_tags.pkl"
+        "oc20_dense/oc20dense_tags.pkl"
     )
     with open(os.path.join(tag_path), "rb") as h:
         tags_map = pickle.load(h)
     ads_idx = tags_map["2_2861_5"] == 2
 
     traj = ase.io.read(
-        "/home/jovyan/shared-scratch/adeesh/denoising/overfit_pbccorr/overfit-xy_std0.01-10_numstep50x10_lr1.e-4_sample1/2_2861_5.traj",
+        "relax_opt/overfit_pbccorr/overfit-xy_std0.01-10_numstep50x10_lr1.e-4_sample1/2_2861_5.traj",
         ":",
     )
     init_system = traj[0]

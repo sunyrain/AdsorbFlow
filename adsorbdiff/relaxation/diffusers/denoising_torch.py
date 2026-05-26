@@ -230,7 +230,7 @@ class Denoiser:
                 + ads_com_noise[self.batch.batch][self.batch.tags == 2]
             )
             self.batch.pos[self.batch.tags == 2] = ads_pos
-            
+
             cvg_count = 0
             logging.info("Starting reverse sde samling:")
             for t_idx in tqdm(range(num_steps)):

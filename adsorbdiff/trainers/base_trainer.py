@@ -448,7 +448,7 @@ class BaseTrainer(ABC):
                 device_ids=[self.device],
                 find_unused_parameters=True,
             )
-        
+
     @property
     def _unwrapped_model(self):
         module = self.model
@@ -508,7 +508,7 @@ class BaseTrainer(ABC):
             self.ema.load_state_dict(checkpoint["ema"])
         else:
             self.ema = None
-            
+
         scale_dict = checkpoint.get("scale_dict", None)
         if scale_dict:
             logging.info(

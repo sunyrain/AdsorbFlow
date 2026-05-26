@@ -128,7 +128,7 @@ class FlowTorch:
             pos_ref_contig = _make_contiguous_ads(pos_ref)
 
         ads_center_ref = scatter(pos_ref_contig[ads_mask], bidx[ads_mask], dim=0, reduce="mean")  # (B,3)
-        
+
         # Use Center of Mass instead of Geometric Center
         # ads_atomic_numbers = batch.atomic_numbers[ads_mask]
         # masses = torch.tensor(ase.data.atomic_masses[ads_atomic_numbers.long().cpu().numpy()], device=pos_ref.device, dtype=pos_ref.dtype)
@@ -202,7 +202,7 @@ class FlowTorch:
         eps_tr = torch.zeros_like(ads_center_ref).normal_() * tr_sigma
         # eps_tr[:, 2] = 0.0
         tr_sigma_z_scale = float(self.flow_opt.get("tr_sigma_z_scale", 0.3))
-        
+
         if allow_z:
             eps_tr[:, 2] *= tr_sigma_z_scale
         else:
@@ -245,7 +245,7 @@ class FlowTorch:
         # 当前“锚点状态”：与训练 forward 中的 (ztr, zrot) 语义一致
         cur_ads_anchor = ads_center_ref + eps_tr           # (B,3)
         cur_rot = eps_rot.clone()                          # (B,3)
-        
+
         # No lifting/overlap handling; rely on allow_z gating and noise scales only.
 
         # --- 构造第一帧坐标（避免 dtr_xy / zrot == 0 的静止） ---

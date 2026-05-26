@@ -89,7 +89,7 @@ class AdsorbateSlabConfig:
             self.sites = self.get_binding_sites(num_sites)
         else:
             self.sites = sites
-            
+
         self.atoms_list, self.metadata_list = self.place_adsorbate_on_sites(
             self.sites,
             num_augmentations_per_site,

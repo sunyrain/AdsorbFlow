@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use AdsorbFlow, please cite the arXiv preprint."
+title: "AdsorbFlow: energy-conditioned flow matching enables fast and realistic adsorbate placement"
+type: software
+authors:
+  - family-names: Qiu
+    given-names: Jiangjie
+  - family-names: Li
+    given-names: Wentao
+  - family-names: Chen
+    given-names: Honghao
+  - family-names: Zhao
+    given-names: Leyi
+  - family-names: Wang
+    given-names: Xiaonan
+repository-code: "https://github.com/sunyrain/AdsorbFlow"
+url: "https://arxiv.org/abs/2602.19289"
+license: MIT
+version: "0.1.0"
+date-released: "2026-05-26"
+preferred-citation:
+  type: article
+  title: "AdsorbFlow: energy-conditioned flow matching enables fast and realistic adsorbate placement"
+  authors:
+    - family-names: Qiu
+      given-names: Jiangjie
+    - family-names: Li
+      given-names: Wentao
+    - family-names: Chen
+      given-names: Honghao
+    - family-names: Zhao
+      given-names: Leyi
+    - family-names: Wang
+      given-names: Xiaonan
+  year: 2026
+  identifiers:
+    - type: arxiv
+      value: "2602.19289"
+  url: "https://arxiv.org/abs/2602.19289"

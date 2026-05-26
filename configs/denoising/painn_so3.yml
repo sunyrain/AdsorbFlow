@@ -1,11 +1,11 @@
 trainer: adsorbdiff.trainers.sde_denoising_trainer.DenoisingTrainer
 
 dataset:
-  - src: /home/jovyan/repos/ocp-modeling/data/is2re/all/train
-  #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/train
-  #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs/train_oc20dense_rs_overfit
+  - src: train_split
+  #- src: train_split
+  #- src: train_split
     normalize_labels: False
-  - src: /home/jovyan/repos/ocp-modeling/data/is2re/all/val_id/data.lmdb
+  - src: val_split
 
 logger:
   name: wandb
@@ -17,18 +17,18 @@ task:
   eval_on_free_atoms: True
   relaxation_steps: 300
   relaxation_fmax: 0.01
-  relax_dataset: 
-        src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs/rand1_I0.1
-        #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_corr/train_oc20dense_rs
-        #src: /home/jovyan/shared-scratch/adeesh/denoising/com_denoising/com-xy_std0.01-10_numstep50x10_lr1.e-4_allcorr/final_struct_lmdb
-        #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/val
+  relax_dataset:
+        src: val_nonrelaxed_update
+        #src: train_split
+        #src: relax_opt
+        #src: val_split
   relax_opt:
         maxstep: 0.04
         memory: 50
         damping: 1.0
         alpha: 70.0
-        #traj_dir: /home/jovyan/shared-scratch/adeesh/denoising/com_sde/bysigma_lmdbcorr_std0.1-10_numstep100_sample1
-        traj_dir: /home/jovyan/shared-scratch/adeesh/denoising/overfit_sde/rand1I0.1_std0.1-10_numstep100_seed0
+        #traj_dir: relax_opt
+        traj_dir: relax_opt
   primary_metric: loss
 hide_eval_progressbar: False
 
@@ -73,7 +73,7 @@ optim:
 
   # for denoising positions
   use_denoising_pos:            True
-  denoising_pos_params:         
+  denoising_pos_params:
     prob:                       1      # probability to switch between denoising positions and S2EF
     fixed_noise_std:            False
     num_steps:                  100

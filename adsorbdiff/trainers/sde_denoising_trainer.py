@@ -768,7 +768,7 @@ class DenoisingTrainer(OCPTrainer):
         if self.ema:
             self.ema.store()
             self.ema.copy_to()
-            
+
         evaluator_is2rs, metrics_is2rs = Evaluator(task="is2rs"), {}
         evaluator_is2re, metrics_is2re = Evaluator(task="is2re"), {}
 

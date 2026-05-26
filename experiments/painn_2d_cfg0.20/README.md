@@ -22,7 +22,7 @@
 ## 训练命令
 
 ```bash
-cd /root/autodl-tmp/AdsorbFlow
+cd .
 python -u -m torch.distributed.launch \
   --nproc_per_node=2 --master_port=1234 \
   main.py --mode train \

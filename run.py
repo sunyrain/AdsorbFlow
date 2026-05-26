@@ -4,14 +4,14 @@ import os
 import argparse
 import torch
 import os
-os.environ['WANDB_API_KEY'] = '28acffdccf6e95ce7e4f346d3fec96439080b1dd'
+os.environ.setdefault("WANDB_MODE", "offline")
 # These are different commands to launch training for diffusion models.
 def diffusion_training(gpus, model):
     print("Current model", model)
     pretrain = f"python -u -m torch.distributed.launch \
                --nproc_per_node={gpus} --master_port=1235 \
                main.py --mode train \
-               --config-yml /root/autodl-tmp/AdsorbFlow/configs/flow/painn_conditional_flow.yml \
+               --config-yml configs/flow/painn_conditional_flow.yml \
                --distributed --amp --identifier pretrainis2rstrain200_fewshot_std0.1-10_so30.01-1.55_lr1e-4 \
                --optim.lr_initial=1.e-4"
     equiformerv2 = f"python -u -m torch.distributed.launch \
@@ -35,14 +35,14 @@ def diffusion_training(gpus, model):
 
 
 def sampling_and_relaxation(ngpus=1, nsite=1):
-    out_path = f"/root/autodl-tmp/AdsorbFlow"
-    #ckpt_path = "/home/jovyan/repos/ocp-modeling/checkpoints/2024-01-08-13-05-04-pretrainis2rs_sde_std0.1-10_so30.01-1.55_painn/checkpoint.pt"
-    ckpt_path = "/root/autodl-tmp/AdsorbFlow/checkpoints/2025-11-18-19-20-32-debug-head/epoch0004_valloss4.1006.pt"
+    out_path = f"."
+    #ckpt_path = "checkpoints/2024-01-08-13-05-04-pretrainis2rs_sde_std0.1-10_so30.01-1.55_painn/checkpoint.pt"
+    ckpt_path = "checkpoints/2025-11-18-19-20-32-debug-head/epoch0004_valloss4.1006.pt"
     relax_ckpt_path = (
-        "/root/autodl-tmp/AdsorbFlow/gemnet_oc_base_s2ef_2M.pt"
+        "gemnet_oc_base_s2ef_2M.pt"
     )
-    val_id = "/root/autodl-tmp/AdsorbFlow/val_nonrelaxed_update"
-    val_ood = "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs/valood50_R1I0.1"
+    val_id = "val_nonrelaxed_update"
+    val_ood = "oc20_dense/lmdbs/valood50_R1I0.1"
     final_cmd = ""
     for step in range(nsite):
         if step != 0:
@@ -64,7 +64,7 @@ def sampling_and_relaxation(ngpus=1, nsite=1):
                 --nproc_per_node={ngpus} --master_port 1235 \
                 main.py --mode run-relaxations \
                 --config-yml configs/relaxation/gemnet_oc/gemnet_relax.yml \
-                --checkpoint /root/autodl-tmp/AdsorbFlow/gemnet_oc_base_s2ef_2M.pt \
+                --checkpoint gemnet_oc_base_s2ef_2M.pt \
                 --task.relax_dataset.src={step_path}/final_struct_lmdb \
                 --task.relax_opt.traj_dir={step_path}/relaxations \
                 --debug"

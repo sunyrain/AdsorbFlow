@@ -26,7 +26,7 @@ import numpy as np
 from tqdm import tqdm
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-os.environ["VASP_PP_PATH"] = "/root/autodl-tmp/potpaw_PBE_54"
+os.environ.setdefault("VASP_PP_PATH", os.path.join(PROJECT_ROOT, "potpaw_PBE_54"))
 
 import sys
 sys.path.insert(0, PROJECT_ROOT)
@@ -61,8 +61,8 @@ def parse_args():
     parser.add_argument("--levels", nargs="+", type=int, default=[1, 2, 5, 10])
     parser.add_argument("--max-sites", type=int, default=10)
     parser.add_argument("--level1-mode", choices=["prefix", "fixed_seed", "best_seed"], default="best_seed")
-    parser.add_argument("--fixed-seed-index", type=int, default=0, help="当 level1-mode=fixed_seed 时使用")
-    parser.add_argument("--clean-existing", action="store_true", help="清空已有 vasp_level_* 目录后重建")
+    parser.add_argument("--fixed-seed-index", type=int, default=0, help="Seed index used when level1-mode=fixed_seed.")
+    parser.add_argument("--clean-existing", action="store_true", help="Remove existing vasp_level_* folders before writing new inputs.")
     return parser.parse_args()
 
 

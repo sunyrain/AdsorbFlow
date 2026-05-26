@@ -21,7 +21,7 @@ from tqdm import tqdm
 # ==================== PATH CONFIG ====================
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, _PROJECT_ROOT)
-os.environ["VASP_PP_PATH"] = "/root/autodl-tmp/potpaw_PBE_54"
+os.environ["VASP_PP_PATH"] = "potpaw_PBE_54"
 
 sys.path.append(os.path.join(_PROJECT_ROOT, "Open-Catalyst-Dataset"))
 from ocdata.utils.vasp import write_vasp_input_files
@@ -30,7 +30,7 @@ import ase.io
 import ase.constraints
 
 # ==================== CONFIG ====================
-BASE_PATH = "/root/autodl-tmp/AdsorbFlow/grid_search_runs/2026-01-13-23-21-36-z_0.3_geo_lift0_cfg_0.20_tr_3_t_opt_pbc_I_500_lr2.0-4_para_eqv2_epoch0187_unweightedvalloss1.2734_posmae0.8954/val_nonrelaxed_update"
+BASE_PATH = "grid_search_runs/2026-01-13-23-21-36-z_0.3_geo_lift0_cfg_0.20_tr_3_t_opt_pbc_I_500_lr2.0-4_para_eqv2_epoch0187_unweightedvalloss1.2734_posmae0.8954/val_nonrelaxed_update"
 NSITES_DIR = "nsites_10"
 CFG_DIR = "cfg7_steps5"
 
@@ -39,7 +39,7 @@ TAG_PATH = os.path.join(_PROJECT_ROOT, "oc20_dense_mappings/oc20dense_tags.pkl")
 
 SITE_LEVELS = [1, 2, 5, 10]
 CORES_PER_JOB = 8
-VASP_CMD = "/root/autodl-tmp/vasp-autodl/vasp.6.3.0/bin/vasp_std"
+VASP_CMD = "vasp_std"
 
 VASP_FLAGS = {
     "ibrion": 2, "nsw": 0, "isif": 0, "isym": 0,

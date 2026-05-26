@@ -195,7 +195,7 @@ class PaiNN(BaseModel):
             nn.init.xavier_uniform_(module.weight)
             if module.bias is not None:
                 module.bias.data.fill_(0)
-    
+
     def _register_activation_hooks(self) -> None:
         def make_hook(layer_type: str, layer_idx: int):
             def _hook(module, inputs, outputs):
@@ -266,12 +266,12 @@ class PaiNN(BaseModel):
         return str(info)
 
     def tag_based_Z(self, data) -> torch.Tensor:
-        an = data.atomic_numbers  
+        an = data.atomic_numbers
         cnho = (an == 1) | (an == 6) | (an == 7) | (an == 8)
         mask = (data.tags < 2) & cnho
         an_mod = an.clone()
         an_mod[mask] += 100
-        return an_mod 
+        return an_mod
 
     # Borrowed from GemNet.
     def select_symmetric_edges(
@@ -699,37 +699,37 @@ class PaiNN(BaseModel):
         # Unlock Z-axis to allow vertical relaxation
         # if translation.size(-1) >= 3:
         #     translation[:, 2] = 0.0
-        
+
         allow_z = getattr(data, "allow_z", True)
         # Handle if it's a tensor (e.g. from collation or just assigned)
         if isinstance(allow_z, torch.Tensor):
-            allow_z = bool(allow_z.item()) if allow_z.numel() == 1 else True 
-        
+            allow_z = bool(allow_z.item()) if allow_z.numel() == 1 else True
+
         if not allow_z and translation.size(-1) >= 3:
             translation[:, 2] = 0.0
 
         # === 2. Rotation 部分 ===
         if forces2 is not None:
             ads_forces2 = forces2[ads_mask]
-            
+
             # (A) 计算吸附剂几何中心 (Geometric Center)
             ads_pos = data.pos[ads_mask]
             ads_batch = batch_idx[ads_mask]
             centers = scatter(ads_pos, ads_batch, dim=0, dim_size=batch_size, reduce="mean")
-            
+
             # (B) 计算相对坐标 r (relative position)
             rel_pos = ads_pos - centers[ads_batch]
 
             # (C) 计算角动量 L = sum(r x v) (Unit mass approximation)
             torque_like = torch.cross(rel_pos, ads_forces2, dim=-1)
             L_total = scatter(torque_like, ads_batch, dim=0, dim_size=batch_size, reduce="sum")
-            
+
             # (D) 计算转动惯量 I = sum(r^2 1 - r r^T) (Unit mass)
             r_sq = (rel_pos ** 2).sum(dim=-1, keepdim=True)
             eye = torch.eye(3, device=translation.device, dtype=rel_pos.dtype).unsqueeze(0)
             r_rT = rel_pos.unsqueeze(2) * rel_pos.unsqueeze(1)
             I_atom = r_sq.unsqueeze(2) * eye - r_rT
-            
+
             I_total = scatter(I_atom, ads_batch, dim=0, dim_size=batch_size, reduce="sum")
 
             # Apply Symmetry Projection BEFORE solve to ensure stability
@@ -741,7 +741,7 @@ class PaiNN(BaseModel):
                 L_total = torch.matmul(rot_projector, L_total.unsqueeze(-1)).squeeze(-1)
                 # Project I: P @ I @ P
                 I_total = torch.matmul(rot_projector, torch.matmul(I_total, rot_projector))
-            
+
             # (E) 解线性方程 I * omega = L
             # 添加正则化项以防止奇异性 (例如线性分子 I 为秩2)
             eye = torch.eye(3, device=I_total.device, dtype=I_total.dtype).unsqueeze(0)
@@ -749,7 +749,7 @@ class PaiNN(BaseModel):
             lam = 1e-3 * (trace / 3.0).clamp(min=1e-8)                  # (B,)
             I_reg = I_total + lam[:, None, None] * eye
 
-            
+
             try:
                 rotation = torch.linalg.solve(I_reg, L_total.unsqueeze(-1)).squeeze(-1)
             except Exception:
@@ -955,7 +955,7 @@ class PaiNNUpdate(nn.Module):
         dx = dx * self.inv_sqrt_2
 
         dvec = xvec3.unsqueeze(1) * vec1
-        
+
         return dx, dvec
 
     def _sanitize_tensor(self, tensor: torch.Tensor, label: str, extra_info: str = "") -> torch.Tensor:
@@ -1042,7 +1042,7 @@ class GatedEquivariantBlock(nn.Module):
     _instances: List["GatedEquivariantBlock"] = []
     _debug_enabled = bool(int(os.getenv("PAINN_GEBLOCK_DEBUG", "0")))
     _norm_warn_limit = float(os.getenv("PAINN_GEBLOCK_NORM_LIMIT", "1.0e3"))
-    _dump_dir = os.getenv("PAINN_GEBLOCK_DUMP_DIR", "/root/autodl-tmp/AdsorbFlow/pt")
+    _dump_dir = os.getenv("PAINN_GEBLOCK_DUMP_DIR", "pt")
     _topk = max(int(os.getenv("PAINN_GEBLOCK_TOPK", "3")), 0)
     _trace_full = bool(int(os.getenv("PAINN_GEBLOCK_TRACE_ALL", "1")))
     _peer_trace_limit = max(int(os.getenv("PAINN_GEBLOCK_PEER_LIMIT", "2")), 0)

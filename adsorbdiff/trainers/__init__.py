@@ -8,7 +8,7 @@ __all__ = [
      "OCPTrainer",
      "MeanFlowTrainer",
  ]
- 
+
 from .base_trainer import BaseTrainer
 from .ocp_trainer import OCPTrainer
 from .meanflow_trainer import MeanFlowTrainer

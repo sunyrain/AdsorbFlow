@@ -1,13 +1,19 @@
 from setuptools import find_packages, setup
 
+
 setup(
-    name="adsorbdiff",
-    version="0.0.1",
-    description="AdsorbDiff: Adsorbate Placement via Conditional Denoising Diffusion",
+    name="adsorbflow",
+    version="0.1.0",
+    description=(
+        "Energy-conditioned flow matching for fast adsorbate placement on "
+        "catalytic surfaces"
+    ),
+    long_description=open("README.md", encoding="utf-8").read(),
+    long_description_content_type="text/markdown",
     license="MIT",
-    author="Adeesh Kolluru",
-    author_email = "kolluru.adeesh@gmail.com",
-    url="https://github.com/AdeeshKolluru/AdsorbDiff",
+    author="Jiangjie Qiu, Wentao Li, Honghao Chen, Leyi Zhao, Xiaonan Wang",
+    url="https://github.com/sunyrain/AdsorbFlow",
     packages=find_packages(),
     include_package_data=True,
+    python_requires=">=3.10",
 )

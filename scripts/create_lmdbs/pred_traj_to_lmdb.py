@@ -37,12 +37,12 @@ def adsorbate_placement(
     ads_site = adslab.get_positions()[ads_mask].mean(axis=0)
     # adsorbate_atoms = Adsorbate(
     #     adsorbate_id_from_db=int(sid.split("_")[0]),
-    #     adsorbate_db_path="/home/jovyan/repos/Open-Catalyst-Dataset/ocdata/databases/pkls/adsorbates.pkl",
+    #     adsorbate_db_path="adsorbdiff/placement/pkls/adsorbates.pkl",
     # )
     adsorbate_atoms = Adsorbate(adsorbate_atoms=adslab[ads_mask])
     bulk = Bulk(
         bulk_id_from_db=int(sid.split("_")[1]),
-        bulk_db_path="/home/jovyan/repos/Open-Catalyst-Dataset/ocdata/databases/pkls/bulks.pkl",
+        bulk_db_path="adsorbdiff/placement/pkls/bulks.pkl",
     )
     slab_atoms = Slab(bulk=bulk, slab_atoms=adslab[~ads_mask])
     random_adslabs = AdsorbateSlabConfig(
@@ -115,12 +115,12 @@ def get_parser():
     parser.add_argument(
         "--data-path",
         required=False,
-        default="/home/jovyan/shared-scratch/adeesh/denoising/relaxations/relaxations/randheur100_I0.1",
+        default="relax_opt/relaxations/relaxations/randheur100_I0.1",
     )
     parser.add_argument(
         "--out-path",
         required=False,
-        default="/home/jovyan/shared-scratch/adeesh/denoising/lmdbs/randheur100_I0.1_fmax0.03",
+        default="relax_opt/lmdbs/randheur100_I0.1_fmax0.03",
         help="Directory to save extracted features. Will create if doesn't exist",
     )
     parser.add_argument(
@@ -156,12 +156,12 @@ if __name__ == "__main__":
     num_trajectories = len(traj_dirs)
 
     if args.tags:
-        tag_path = "/root/autodl-tmp/AdsorbFlow/oc20dense_tags.pkl"
+        tag_path = "oc20dense_tags.pkl"
         with open(os.path.join(tag_path), "rb") as h:
             tags_map = pickle.load(h)
 
     with open(
-        "/root/autodl-tmp/AdsorbFlow/oc20_dense_mappings/oc20dense_mapping.pkl",
+        "oc20_dense_mappings/oc20dense_mapping.pkl",
         "rb",
     ) as f:
         oc20_dense_mapping = pickle.load(f)

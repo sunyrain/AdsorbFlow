@@ -22,7 +22,7 @@ from tqdm import tqdm
 # ==================== PATH CONFIG ====================
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, _PROJECT_ROOT)
-os.environ["VASP_PP_PATH"] = "/root/autodl-tmp/potpaw_PBE_54"
+os.environ["VASP_PP_PATH"] = "potpaw_PBE_54"
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
 sys.path.append(os.path.join(_PROJECT_ROOT, "Open-Catalyst-Dataset"))
@@ -32,7 +32,7 @@ import ase.io
 import ase.constraints
 
 # ==================== CONFIG ====================
-BASE_PATH = "/root/autodl-tmp/AdsorbFlow/grid_search_runs/2026-02-14-11-05-36-z_0_2D_cfg_0.20_tr_3_lr2.0-4_eqv2_epoch0180_unweightedvalloss1.0316_posmae0.9085/val_nonrelaxed_update"
+BASE_PATH = "grid_search_runs/2026-02-14-11-05-36-z_0_2D_cfg_0.20_tr_3_lr2.0-4_eqv2_epoch0180_unweightedvalloss1.0316_posmae0.9085/val_nonrelaxed_update"
 NSITES_DIR = "nsites_10"
 CFG_DIR = "cfg7_steps5"
 
@@ -41,7 +41,7 @@ TAG_PATH = os.path.join(_PROJECT_ROOT, "oc20_dense_mappings/oc20dense_tags.pkl")
 
 SITE_LEVELS = [1, 2, 5, 10]
 CORES_PER_JOB = 8
-VASP_CMD = "/root/autodl-tmp/vasp-autodl/vasp.6.3.0/bin/vasp_std"
+VASP_CMD = "vasp_std"
 VASP_TIMEOUT = 1800  # 30 min per job
 
 VASP_FLAGS = {

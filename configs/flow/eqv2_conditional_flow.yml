@@ -1,11 +1,11 @@
 trainer: adsorbdiff.trainers.meanflow_trainer.MeanFlowTrainer
 
 dataset:
-  - src:  /root/autodl-tmp/AdsorbFlow/train_split
-  #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/train
-  #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs/train_oc20dense_rs_overfit
+  - src:  train_allE
+  #- src: train_split
+  #- src: train_split
     normalize_labels: False
-  - src: /root/autodl-tmp/AdsorbFlow/val_split
+  - src: val_split
     normalize_labels: False
 logger:
   name: wandb
@@ -18,19 +18,19 @@ task:
   eval_on_free_atoms: True
   relaxation_steps: 100
   relaxation_fmax: 0.01
-  relax_dataset: 
-        src: /root/autodl-tmp/AdsorbFlow/val_nonrelaxed_update
-        #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_corr/train_oc20dense_rs
-        #src: /home/jovyan/shared-scratch/adeesh/denoising/com_denoising/com-xy_std0.01-10_numstep50x10_lr1.e-4_allcorr/final_struct_lmdb
-        #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/val
+  relax_dataset:
+        src: val_nonrelaxed_update
+        #src: train_split
+        #src: relax_opt
+        #src: val_split
   relax_opt:
         maxstep: 0.04
         memory: 50
         damping: 1.0
         alpha: 70.0
-        cfg_scale: 2.0 
-        #traj_dir: /home/jovyan/shared-scratch/adeesh/denoising/com_sde/bysigma_lmdbcorr_std0.1-10_numstep100_sample1
-        traj_dir: /root/autodl-tmp/AdsorbFlow/relax_opt
+        cfg_scale: 2.0
+        #traj_dir: relax_opt
+        traj_dir: relax_opt
   primary_metric: loss
 hide_eval_progressbar: False
 
@@ -77,7 +77,7 @@ model:
 
   weight_init:              'uniform'    # ['uniform', 'normal']
   so3_denoising:            True
-  FOR_denoising:            True 
+  FOR_denoising:            True
   energy_encoding:          scalar
 
 optim:
@@ -95,7 +95,7 @@ optim:
   # warmup_steps: 2
   # warmup_factor: 0.2
   step_size: 3
-  gamma: 0.95    
+  gamma: 0.95
 
   max_epochs: 100000
   force_coefficient: 100
@@ -106,13 +106,13 @@ optim:
   loss_force: l2mae
 
   eval_every: 10000
-  checkpoint_every: 1000 
+  checkpoint_every: 1000
 
   # Flow Matching configuration
   p_cfg: 0.2        # Classifier-Free Guidance probability
 
   flow:
-    nan_weight_debug: false  
+    nan_weight_debug: false
     monitor_interval: 0       # Disable CFG debug monitoring to save VRAM (default 100)
     type: fm                  # Flow Matching
     fm_regression: velocity   # Target: velocity

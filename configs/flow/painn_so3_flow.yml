@@ -1,11 +1,11 @@
 trainer: adsorbdiff.trainers.meanflow_trainer.MeanFlowTrainer
 
 dataset:
-  - src: /root/autodl-tmp/AdsorbFlow/is2res_train_val_test_lmdbs/data/is2re/all/train
-  #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/train
-  #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs/train_oc20dense_rs_overfit
+  - src: is2res_train_val_test_lmdbs/data/is2re/all/train
+  #- src: train_split
+  #- src: train_split
     normalize_labels: False
-  - src: /root/autodl-tmp/AdsorbFlow/is2res_train_val_test_lmdbs/data/is2re/all/val_id/data.lmdb
+  - src: is2res_train_val_test_lmdbs/data/is2re/all/val_id/data.lmdb
 
 logger:
   name: wandb
@@ -17,18 +17,18 @@ task:
   eval_on_free_atoms: True
   relaxation_steps: 300
   relaxation_fmax: 0.01
-  relax_dataset: 
-        src: /root/autodl-tmp/AdsorbFlow/val_nonrelaxed_update
-        #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_corr/train_oc20dense_rs
-        #src: /home/jovyan/shared-scratch/adeesh/denoising/com_denoising/com-xy_std0.01-10_numstep50x10_lr1.e-4_allcorr/final_struct_lmdb
-        #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/val
+  relax_dataset:
+        src: val_nonrelaxed_update
+        #src: train_split
+        #src: relax_opt
+        #src: val_split
   relax_opt:
         maxstep: 0.04
         memory: 50
         damping: 1.0
         alpha: 70.0
-        #traj_dir: /home/jovyan/shared-scratch/adeesh/denoising/com_sde/bysigma_lmdbcorr_std0.1-10_numstep100_sample1
-        traj_dir: /root/autodl-tmp/AdsorbFlow/relax_opt
+        #traj_dir: relax_opt
+        traj_dir: relax_opt
   primary_metric: loss
 hide_eval_progressbar: False
 
@@ -58,7 +58,7 @@ optim:
     weight_decay: 0.001
   scheduler: CosineAnnealingLR
   T_max: 100        # 一个周期的 epoch 数
-  eta_min: 0.000001 
+  eta_min: 0.000001
 
   patience: 3
   max_epochs: 100
@@ -68,7 +68,7 @@ optim:
   ema_decay: 0.999
   loss_energy: mae
   loss_force: l2mae
-  
+
 
   flow:
     type: fm                  # ← 关键：FM

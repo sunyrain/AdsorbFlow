@@ -1,11 +1,11 @@
 trainer: adsorbdiff.trainers.meanflow_trainer.MeanFlowTrainer
 
 dataset:
-  - src:  /root/autodl-tmp/AdsorbFlow/train_split
-  #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/train
-  #- src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs/train_oc20dense_rs_overfit
+  - src:  train_split
+  #- src: train_split
+  #- src: train_split
     normalize_labels: False
-  - src: /root/autodl-tmp/AdsorbFlow/val_split
+  - src: val_split
     normalize_labels: False
 
 logger:
@@ -18,18 +18,18 @@ task:
   eval_on_free_atoms: True
   relaxation_steps: 100
   relaxation_fmax: 0.01
-  relax_dataset: 
-        src: /root/autodl-tmp/AdsorbFlow/val_nonrelaxed_update
-        #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_corr/train_oc20dense_rs
-        #src: /home/jovyan/shared-scratch/adeesh/denoising/com_denoising/com-xy_std0.01-10_numstep50x10_lr1.e-4_allcorr/final_struct_lmdb
-        #src: /home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs_train_subsplits/val
+  relax_dataset:
+        src: val_nonrelaxed_update
+        #src: train_split
+        #src: relax_opt
+        #src: val_split
   relax_opt:
         maxstep: 0.04
         memory: 50
         damping: 1.0
         alpha: 70.0
-        #traj_dir: /home/jovyan/shared-scratch/adeesh/denoising/com_sde/bysigma_lmdbcorr_std0.1-10_numstep100_sample1
-        traj_dir: /root/autodl-tmp/AdsorbFlow/relax_opt
+        #traj_dir: relax_opt
+        traj_dir: relax_opt
   primary_metric: loss
 hide_eval_progressbar: False
 
@@ -74,12 +74,12 @@ optim:
   loss_energy: mae
   loss_force: l2mae
   p_cfg: 0.25        # ← 关键：cfg 强度
-  
+
   checkpoint_every_epoch: 50   # 每 20 个 epoch 存一次 epoch_XXX.pt
   checkpoint_every: -1        # 禁用基于 step 的频繁保存 (checkpoint.pt 会在每个 epoch 结束时自动更新)
 
   flow:
-    nan_weight_debug: false  
+    nan_weight_debug: false
     type: fm                  # ← 关键：FM
     fm_regression: velocity # 或 clean_endpoint / delta_clean
     path: rectified           # 先用直线/测地插值

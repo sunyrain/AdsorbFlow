@@ -152,8 +152,9 @@ class LBFGS:
             for traj in self.trajectories:
                 traj.close()
             for name in self.traj_names:
-                traj_fl = Path(self.traj_dir / f"{name}.traj_tmp", mode="w")
-                traj_fl.rename(traj_fl.with_suffix(".traj"))
+                traj_fl = Path(self.traj_dir) / f"{name}.traj_tmp"
+                if traj_fl.exists():
+                    traj_fl.rename(traj_fl.with_suffix(".traj"))
 
         self.batch.y, self.batch.force = self.get_energy_and_forces(
             apply_constraint=False

@@ -23,6 +23,21 @@ from adsorbdiff.models.equiformer_v2.equiformer_v2_oc20 import (
 )
 from adsorbdiff.models.embeddings import ATOMIC_RADII
 
+
+class FourierFeatures(nn.Module):
+    """NeRF-style sinusoidal positional encoding for scalar inputs."""
+
+    def __init__(self, num_freqs: int = 16, log_max_freq: float = 4.0):
+        super().__init__()
+        freqs = 2.0 ** torch.linspace(0.0, log_max_freq, num_freqs)
+        self.register_buffer("freqs", freqs)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (..., 1)  ->  (..., 2*num_freqs)
+        x_proj = x * self.freqs  # broadcast
+        return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
+
+
 # Statistics of IS2RE 100K
 _AVG_NUM_NODES = 77.81317
 _AVG_DEGREE = (
@@ -132,27 +147,37 @@ class EquiformerV2S_OC20_DenoisingPos(EquiformerV2_OC20):
         # self.force_embedding = SO3_LinearV2(
         #     in_features=1, out_features=self.sphere_channels, lmax=max(self.lmax_list)
         # )
-        
+
         # === Energy conditioning (FiLM-style, matching PaiNN exactly) ===
-        if energy_encoding == "scalar":
+        if energy_encoding == "fourier":
+            num_freqs = 16
+            self.energy_fourier = FourierFeatures(num_freqs=num_freqs, log_max_freq=4.0)
+            self.energy_embedding = nn.Sequential(
+                nn.Linear(2 * num_freqs, self.sphere_channels),
+                ScaledSiLU(),
+                nn.Linear(self.sphere_channels, self.sphere_channels * 2),
+            )
+            self.energy_null = nn.Parameter(torch.zeros(self.sphere_channels * 2))
+        elif energy_encoding == "scalar":
+            self.energy_fourier = None
             self.energy_embedding = nn.Sequential(
                 nn.Linear(1, self.sphere_channels),
                 ScaledSiLU(),
                 nn.Linear(self.sphere_channels, self.sphere_channels * 2),
             )
-            # Learnable null embedding for CFG dropout
             self.energy_null = nn.Parameter(torch.zeros(self.sphere_channels * 2))
         else:
+            self.energy_fourier = None
             self.energy_embedding = None
             self.energy_null = None
-        
+
         # === Time embedding (matching PaiNN exactly) ===
         self.time_embedding = nn.Sequential(
             nn.Linear(1, self.sphere_channels),
             ScaledSiLU(),
             nn.Linear(self.sphere_channels, self.sphere_channels),
         )
-        
+
         # CFG dropout probability (set by trainer)
         self.p_cfg = 0.0
         # Flow regression target (set by trainer)
@@ -187,7 +212,7 @@ class EquiformerV2S_OC20_DenoisingPos(EquiformerV2_OC20):
 
         self.FOR_denoising = FOR_denoising
         self.sampling = sampling
-        
+
         # === Initialize energy/time embeddings (matching PaiNN) ===
         self._reset_flow_embeddings()
 
@@ -195,7 +220,7 @@ class EquiformerV2S_OC20_DenoisingPos(EquiformerV2_OC20):
         atom_radii = torch.zeros(max_num_elements + 1, device=self.device)
         for i in range(min(101, len(ATOMIC_RADII))):
             atom_radii[i] = ATOMIC_RADII[i]
-        
+
         # Map shifted elements (1, 6, 7, 8 -> 101, 106, 107, 108)
         # We assume the shift is always +100 for these elements as per tag_based_Z
         for el in [1, 6, 7, 8]:
@@ -212,7 +237,7 @@ class EquiformerV2S_OC20_DenoisingPos(EquiformerV2_OC20):
                 nn.init.xavier_uniform_(module.weight)
                 if module.bias is not None:
                     module.bias.data.fill_(0)
-        
+
         if self.energy_embedding is not None:
             self.energy_embedding.apply(_reset_linear)
         if self.energy_null is not None:
@@ -311,16 +336,20 @@ class EquiformerV2S_OC20_DenoisingPos(EquiformerV2_OC20):
                 batch_size = int(data.natoms.shape[0])
             else:
                 batch_size = int(batch_idx.max().item()) + 1
-            
+
             # Get energy values (matching PaiNN: no sampling check here)
             if hasattr(data, "energy") and data.energy is not None:
                 node_energy = data.energy[batch_idx].unsqueeze(-1)
             else:
                 node_energy = torch.zeros(batch_idx.size(0), 1, device=self.device)
-            
+
+            # Apply Fourier positional encoding if available
+            if self.energy_fourier is not None:
+                node_energy = self.energy_fourier(node_energy.float())
+
             # Compute energy embedding (matching PaiNN: use .float() then cast)
             energy_cond = self.energy_embedding(node_energy.float()).to(self.dtype)
-            
+
             # === CFG dropout logic ===
             cfg_conditioned = getattr(data, "cfg_conditioned", None)
             if cfg_conditioned is not None:
@@ -336,18 +365,18 @@ class EquiformerV2S_OC20_DenoisingPos(EquiformerV2_OC20):
             else:
                 # No dropout
                 node_mask = torch.ones(batch_idx.size(0), dtype=torch.bool, device=self.device)
-            
+
             # Apply learnable null for dropped samples
             null_vec = self.energy_null.view(1, -1).to(device=self.device, dtype=self.dtype).expand_as(energy_cond)
             emb = torch.where(node_mask.unsqueeze(-1), energy_cond, null_vec)
-            
+
             # FiLM conditioning: scale and shift (matching PaiNN exactly)
             # IMPORTANT: Use clone() to avoid inplace modification breaking autograd
             gamma, beta = torch.chunk(emb, 2, dim=-1)
             x_l0 = x.embedding[:, 0, :].clone()
             x_l0 = x_l0 * (1 + gamma) + beta
             x.embedding = torch.cat([x_l0.unsqueeze(1), x.embedding[:, 1:, :]], dim=1)
-        
+
         # === Time embedding (matching PaiNN exactly) ===
         if hasattr(data, "t") and data.t is not None:
             t_val = data.t
@@ -429,16 +458,16 @@ class EquiformerV2S_OC20_DenoisingPos(EquiformerV2_OC20):
     def _forward_flow(self, data, forces: torch.Tensor, forces2: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
         """
         Project per-atom outputs to rigid body (translation/rotation) flow heads.
-        
+
         Key Insight for EquiformerV2:
         -----------------------------
         Unlike PaiNN which outputs polar vectors (forces), EquiformerV2's SO(3)-equivariant
         l=1 output with even parity (p=1) naturally represents **pseudovectors** (axial vectors).
-        
+
         - Axis-angle rotation vectors are pseudovectors
         - Therefore, force_block2's l=1 output can DIRECTLY represent axis-angle velocities
         - No need for the torque-based conversion (L = r × F, ω = I⁻¹L) used in PaiNN
-        
+
         This simplification:
         1. Avoids numerical issues from inertia tensor inversion
         2. Is more physically consistent with the equivariance properties
@@ -468,12 +497,12 @@ class EquiformerV2S_OC20_DenoisingPos(EquiformerV2_OC20):
         # === 1. Translation: mean pooling of per-atom outputs ===
         # Translation velocity = mean of atomic "velocities" (rigid body translation)
         translation = scatter(ads_forces, ads_batch, dim=0, dim_size=batch_size, reduce="mean")
-        
+
         # Handle allow_z flag
         allow_z = getattr(data, "allow_z", True)
         if isinstance(allow_z, torch.Tensor):
             allow_z = bool(allow_z.item()) if allow_z.numel() == 1 else True
-        
+
         if not allow_z and translation.size(-1) >= 3:
             translation[:, 2] = 0.0
 
@@ -484,11 +513,11 @@ class EquiformerV2S_OC20_DenoisingPos(EquiformerV2_OC20):
         # We simply aggregate per-atom contributions via mean pooling.
         if forces2 is not None:
             ads_forces2 = forces2[ads_mask]
-            
+
             # Direct mean pooling - no torque conversion needed!
             # The network learns to output axis-angle velocity directly.
             rotation = scatter(ads_forces2, ads_batch, dim=0, dim_size=batch_size, reduce="mean")
-            
+
             # Apply symmetry projection to constrain rotation to allowed DOFs
             rot_projector = getattr(data, "rot_projector", None)
             if torch.is_tensor(rot_projector):

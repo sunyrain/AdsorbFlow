@@ -1,140 +1,105 @@
-wandb
-data
-checkpoints
-results
-logs
-*.traj
-*.sh
-grid_search_runs
-grid_search_runs_ood
-exports
-archives/
-vasp_fair_all2d/
-vasp_fair_all2d.tar.gz
-vasp_ood_results/
-so3_precompute/
-oc20_dense_mappings/
-Open-Catalyst-Dataset/
-experiments/
-EXPERIMENT_TODO.md.bak
-# Byte-compiled / optimized / DLL files
+# Python caches and build artifacts
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
-env/
 build/
 develop-eggs/
 dist/
-downloads/
 eggs/
 .eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
 *.egg-info/
-.installed.cfg
 *.egg
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
+.installed.cfg
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*,cover
-.hypothesis/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-docs/source/_build/
-
-# PyBuilder
-target/
-
-# IPython Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# celery beat schedule file
-celerybeat-schedule
-
-# dotenv
+# Environments
 .env
-
-# virtualenv
+.venv/
+env/
 venv/
 ENV/
 
-# Spyder project settings
-.spyderproject
+# Test and notebook state
+.cache/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+.ipynb_checkpoints/
+.pytest_cache/
+.tox/
+coverage.xml
+nosetests.xml
 
-# Rope project settings
-.ropeproject
-
-# User directories
-Local
-
-# .DS_Store
+# Editor and OS files
 .DS_Store
-
-# VIM swap files
+.idea/
+.ropeproject
+.spyderproject
+.vscode/
 *.swp
 
-# PyCharm
-.idea/
+# Experiment tracking and generated outputs
+wandb/
+logs/
+results/
+exports/
+archives/
+grid_search_runs/
+grid_search_runs_ood/
+relax_opt/
+vasp_fair_all2d/
+vasp_ood_results/
+*.log
+*.traj
+*.traj_tmp
 
-# VS Code
-.vscode/*.lmdb
-*.pt
+# Large datasets and checkpoints
+downloads/
+checkpoints/
+oc20_dense_mappings/
+Open-Catalyst-Dataset/
 train_allE/
+train_allE_small/
 train_split/
 val_split/
 val_nonrelaxed_update/
 valood50_R1I0.1/
-train_allE_small/
 *.lmdb
-*.pt
+*.tar.gz
 *.pkl
-train_allE/
-train_split/
-val_split/
-val_nonrelaxed_update/
-valood50_R1I0.1/
-train_allE_small/
+*.pt
+
+# Allow small legacy helper assets that are already part of the source release.
+!adsorbdiff/models/equiformer_v2/Jd.pt
+!adsorbdiff/placement/pkls/adsorbates.pkl
+!adsorbdiff/placement/pkls/bulks.pkl
+!configs/relaxation/gemnet_oc/gemnet-oc.pt
+!configs/scaling_factors/painn_nb6_scaling_factors.pt
+!examples/NRR/literature_data.pkl
+!examples/NRR/NRR_example_bulks.pkl
+
+# VASP and scheduler outputs
+CHG
+CHGCAR
+CONTCAR
+DOSCAR
+EIGENVAL
+IBZKPT
+OSZICAR
+OUTCAR
+PCDAT
+PROCAR
+vasp.out
+WAVECAR
+XDATCAR
+slurm-*.out
+
+# Local scratch
+data/
+Local/
+experiments/
+EXPERIMENT_TODO.md.bak

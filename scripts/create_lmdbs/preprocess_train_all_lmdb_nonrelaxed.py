@@ -33,11 +33,11 @@ def adsorbate_placement(
 
     adsorbate_atoms = Adsorbate(
         adsorbate_id_from_db=int(sid.split("_")[0]),
-        # adsorbate_db_path="/home/jovyan/repos/Open-Catalyst-Dataset/ocdata/databases/pkls/adsorbates.pkl",
+        # adsorbate_db_path="adsorbdiff/placement/pkls/adsorbates.pkl",
     )
     bulk = Bulk(
         bulk_id_from_db=int(sid.split("_")[1]),
-        # bulk_db_path="/home/jovyan/repos/Open-Catalyst-Dataset/ocdata/databases/pkls/bulks.pkl",
+        # bulk_db_path="adsorbdiff/placement/pkls/bulks.pkl",
     )
     slab_atoms = Slab(bulk=bulk, slab_atoms=adslab[~ads_mask])
     random_adslabs = AdsorbateSlabConfig(
@@ -67,7 +67,7 @@ def write_images_to_lmdb(mp_arg):
         # try:
         sid = sys_id.strip()
         traj_dir = (
-            f"/home/jovyan/shared-scratch/adeesh/data/oc20_dense/trajs/{sid}"
+            f"oc20_dense/trajs/{sid}"
         )
         traj_files = glob.glob(traj_dir + "/*[!surface].traj")
         energies = np.array(
@@ -158,12 +158,12 @@ def get_parser():
     parser.add_argument(
         "--txt-path",
         required=False,
-        default="/home/jovyan/shared-scratch/adeesh/data/oc20_dense/unique_train_system_id.txt",
+        default="oc20_dense/unique_train_system_id.txt",
     )
     parser.add_argument(
         "--out-path",
         required=False,
-        default="/home/jovyan/shared-scratch/adeesh/data/oc20_dense/lmdbs/val44_RH2I1",
+        default="oc20_dense/lmdbs/val44_RH2I1",
         help="Directory to save extracted features. Will create if doesn't exist",
     )
     parser.add_argument(
@@ -195,12 +195,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.tags:
-        tag_path = "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/oc20dense_tags.pkl"
+        tag_path = "oc20_dense/oc20dense_tags.pkl"
         with open(os.path.join(tag_path), "rb") as h:
             tags_map = pickle.load(h)
 
     with open(
-        "/home/jovyan/shared-scratch/adeesh/data/oc20_dense/oc20dense_mapping.pkl",
+        "oc20_dense/oc20dense_mapping.pkl",
         "rb",
     ) as f:
         oc20_dense_mapping = pickle.load(f)
