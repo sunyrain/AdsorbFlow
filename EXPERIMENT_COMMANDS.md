@@ -2,7 +2,7 @@
 
 This file records public, path-agnostic command templates for reproducing the
 main AdsorbFlow workflow. Replace placeholder paths such as
-`/path/to/AdsorbFlow` and `checkpoints/<adsorbflow_checkpoint>.pt` with local
+`/path/to/AdsorbFlow` and `checkpoints/{adsorbflow_checkpoint}.pt` with local
 paths on your workstation or cluster.
 
 For a higher-level workflow description, see `REPRODUCIBILITY.md`.
@@ -68,7 +68,7 @@ python -u -m torch.distributed.launch \
 python -u scripts/grid_search_cfg_flow.py \
   --cfg-scales 0 1 3 5 7 10 \
   --num-steps 5 10 30 \
-  --flow-checkpoint checkpoints/<adsorbflow_checkpoint>.pt \
+  --flow-checkpoint checkpoints/{adsorbflow_checkpoint}.pt \
   --relax-checkpoint configs/relaxation/gemnet_oc/gemnet-oc.pt \
   --model-type eqv2 \
   --nsites 10 \
@@ -85,7 +85,7 @@ Prepare VASP input folders for selected SR@k levels:
 
 ```bash
 python scripts/cluster_vasp/prepare_multilevel_vasp_inputs.py \
-  --cfg-dir grid_search_runs/<run_name>/val_nonrelaxed_update/nsites_10/cfg7_steps5 \
+  --cfg-dir grid_search_runs/{run_name}/val_nonrelaxed_update/nsites_10/cfg7_steps5 \
   --tag-path oc20_dense_mappings/oc20dense_tags.pkl \
   --levels 1 2 5 10 \
   --max-sites 10
@@ -95,7 +95,7 @@ Compute paper-style SR@k after VASP single-point calculations complete:
 
 ```bash
 python scripts/cluster_vasp/paper_faithful_sr.py \
-  --cfg-dir grid_search_runs/<run_name>/val_nonrelaxed_update/nsites_10/cfg7_steps5 \
+  --cfg-dir grid_search_runs/{run_name}/val_nonrelaxed_update/nsites_10/cfg7_steps5 \
   --ref-energy-path oc20_dense_mappings/oc20dense_ref_energies.pkl
 ```
 

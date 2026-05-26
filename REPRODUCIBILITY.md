@@ -45,7 +45,7 @@ and evaluate MLFF-level success and anomaly rates:
 python -u scripts/grid_search_cfg_flow.py \
   --cfg-scales 0 1 3 5 7 10 \
   --num-steps 5 10 30 \
-  --flow-checkpoint checkpoints/<adsorbflow_checkpoint>.pt \
+  --flow-checkpoint checkpoints/{adsorbflow_checkpoint}.pt \
   --relax-checkpoint configs/relaxation/gemnet_oc/gemnet-oc.pt \
   --model-type eqv2 \
   --nsites 10 \

@@ -61,7 +61,7 @@ Place AdsorbFlow generator checkpoints under `checkpoints/`. The README command
 templates refer to them as:
 
 ```text
-checkpoints/<adsorbflow_checkpoint>.pt
+checkpoints/{adsorbflow_checkpoint}.pt
 ```
 
 For MLFF relaxation, configure a GemNet-OC checkpoint in
