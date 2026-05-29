@@ -4,7 +4,7 @@ Script to run inference on the validation set and visualize Flow Matching result
 vs Ground Truth in 3D plots.
 
 Usage:
-    python scripts/visualize_val_inference.py --config-yml configs/denoising/your_config.yml --checkpoint /path/to/checkpoint.pt --output-dir viz_results --num-samples 10
+    python scripts/viz/visualize_val_inference.py --config-yml configs/denoising/your_config.yml --checkpoint /path/to/checkpoint.pt --output-dir viz_results --num-samples 10
 """
 
 import argparse

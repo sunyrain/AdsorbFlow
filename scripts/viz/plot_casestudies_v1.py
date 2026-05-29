@@ -11,7 +11,7 @@ Produces:
   2. CO₂RR: (a) selectivity map (calibrated ΔE_CO vs ΔE_H), (b) ΔE_CO parity
 
 Usage:
-    python scripts/plot_casestudies.py \
+    python scripts/viz/plot_casestudies_v1.py \
         --oer-dir examples/OER/data_flow \
         --co2rr-dir examples/CO2RR/data_flow \
         --output-dir figures/casestudies
@@ -322,7 +322,7 @@ def main():
     parser.add_argument("--output-dir", default="figures/casestudies")
     args = parser.parse_args()
 
-    main_path = str(Path(__file__).resolve().parent.parent)
+    main_path = str(Path(__file__).resolve().parents[2])
     os.makedirs(args.output_dir, exist_ok=True)
 
     all_metrics = {}

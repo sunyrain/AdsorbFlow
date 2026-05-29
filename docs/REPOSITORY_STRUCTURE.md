@@ -18,10 +18,8 @@ scripts/
   cluster_vasp/             DFT input generation and SR analysis
   create_lmdbs/             OC20-Dense preprocessing utilities
   evaluation/               grid-search, relaxation, and batch evaluation helpers
-  run_vasp_dft/             local VASP launch helpers requiring site-specific edits
-  training_utils/           LMDB splitting and training maintenance utilities
+  training_utils/           LMDB splitting and metadata utilities
   viz/                      figure-generation scripts
-  dev/                      development and diagnostic scripts
 
 examples/
   CO2RR/ NO3RR/ OER/ NRR/   lightweight case-study CSV outputs
@@ -29,6 +27,10 @@ examples/
 figures/
   ablation/ casestudies/ no3rr/
                              publication figures generated from tracked outputs
+
+docs/
+  COMMANDS.md DATA.md MODEL_CARD.md PAPER_RESULTS.md REPRODUCIBILITY.md
+                             public documentation and result audit notes
 
 paper_artifacts/
   grid_search_results/      compact JSONL summaries for MLFF grid searches

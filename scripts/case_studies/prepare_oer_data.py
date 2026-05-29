@@ -20,7 +20,7 @@ Adsorbate free-energy corrections (standard, from Nørskov group):
   ΔG_OOH = ΔE_OOH + 0.40 eV
 
 Usage:
-    python scripts/prepare_oer_data.py
+    python scripts/case_studies/prepare_oer_data.py
 """
 
 import os
@@ -86,7 +86,7 @@ def compute_overpotential(dG_OH, dG_O, dG_OOH):
 
 
 def main():
-    main_path = str(Path(__file__).resolve().parent.parent)
+    main_path = str(Path(__file__).resolve().parents[2])
     bulk_db_path = os.path.join(main_path, "adsorbdiff/placement/pkls/bulks.pkl")
     out_dir = os.path.join(main_path, "examples/OER")
     os.makedirs(out_dir, exist_ok=True)

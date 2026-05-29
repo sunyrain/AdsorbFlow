@@ -10,7 +10,7 @@ Alloy structures: L1_2 (Cu3Au-type) ordered FCC alloys + pure FCC metals.
 Surface: (100) — the most active and studied facet for NO3RR.
 
 Usage:
-    python scripts/prepare_no3rr_data.py
+    python scripts/case_studies/prepare_no3rr_data.py
 """
 
 import os
@@ -22,7 +22,7 @@ import numpy as np
 from ase import Atoms
 from ase.build import bulk as ase_bulk
 
-MAIN_PATH = str(Path(__file__).resolve().parent.parent)
+MAIN_PATH = str(Path(__file__).resolve().parents[2])
 OUT_DIR = os.path.join(MAIN_PATH, "examples", "NO3RR")
 
 # ── FCC lattice parameters (Å) ──

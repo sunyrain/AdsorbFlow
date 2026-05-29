@@ -6,7 +6,7 @@ writes them out as extended XYZ files (one per trajectory) so they can be
 inspected locally with OVITO or ASE.
 
 Example:
-    python scripts/export_trajs_for_ovito.py --flow-dir grid_search_runs/cfg10_steps100/0 --relax-dir relaxations --output exports/ovito_xyz --lmdb val_nonrelaxed_update --single-flow-frame
+    python scripts/viz/export_trajs_for_ovito.py --flow-dir grid_search_runs/cfg10_steps100/0 --relax-dir relaxations --output exports/ovito_xyz --lmdb val_nonrelaxed_update --single-flow-frame
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import numpy as np
 from ase import Atoms
 
 import sys
-sys.path.append(str(Path(__file__).resolve().parent.parent))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from adsorbdiff.datasets.lmdb_dataset import LmdbDataset
 

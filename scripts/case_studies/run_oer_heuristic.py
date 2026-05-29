@@ -9,7 +9,7 @@ This isolates the contribution of the Flow model by comparing:
   - Heuristic + GemNet-OC (this script, no Flow)
 
 Usage:
-    python scripts/run_oer_heuristic.py \
+    python scripts/case_studies/run_oer_heuristic.py \
         --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --output-dir examples/OER/data_heuristic \
         --device cuda:0
@@ -28,7 +28,7 @@ import pandas as pd
 import ase.io
 from ase.optimize import BFGS
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adsorbdiff.placement import (
     Adsorbate,
     AdsorbateSlabConfig,
@@ -66,13 +66,13 @@ def main():
     parser.add_argument("--miller", type=int, nargs=3, default=[1, 1, 1])
     args = parser.parse_args()
 
-    main_path = str(Path(__file__).resolve().parent.parent.parent)
+    main_path = str(Path(__file__).resolve().parents[2])
     db_path = os.path.join(main_path, "adsorbdiff/placement/pkls/adsorbates.pkl")
     bulks_path = os.path.join(main_path, "examples/OER/OER_bulks.pkl")
     miller = tuple(args.miller)
 
     if not os.path.exists(bulks_path):
-        print("ERROR: Run 'python scripts/prepare_oer_data.py' first.")
+        print("ERROR: Run 'python scripts/case_studies/prepare_oer_data.py' first.")
         sys.exit(1)
 
     with open(bulks_path, "rb") as f:

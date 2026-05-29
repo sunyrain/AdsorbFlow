@@ -66,7 +66,7 @@ python -u -m torch.distributed.launch \
 ## MLFF-Level Grid Search
 
 ```bash
-python -u scripts/grid_search_cfg_flow.py \
+python -u scripts/evaluation/grid_search_cfg_flow.py \
   --cfg-scales 0 1 3 5 7 10 \
   --num-steps 5 10 30 \
   --flow-checkpoint checkpoints/{adsorbflow_checkpoint}.pt \
@@ -92,12 +92,32 @@ python scripts/cluster_vasp/prepare_multilevel_vasp_inputs.py \
   --max-sites 10
 ```
 
-Compute paper-style SR@k after VASP single-point calculations complete:
+Optionally pack the generated VASP input folders for transfer to a cluster:
 
 ```bash
-python scripts/cluster_vasp/paper_faithful_sr.py \
+python scripts/cluster_vasp/pack_vasp_inputs.py \
   --cfg-dir grid_search_runs/{run_name}/val_nonrelaxed_update/nsites_10/cfg7_steps5 \
-  --ref-energy-path oc20_dense_mappings/oc20dense_ref_energies.pkl
+  --output vasp_inputs.tar.gz \
+  --levels 1 2 5 10
+```
+
+Compute per-seed and fair SR@k from completed MLFF grid-search outputs:
+
+```bash
+python scripts/cluster_vasp/compute_fair_sr.py \
+  --grid-search-dir grid_search_runs/{run_name}/val_nonrelaxed_update/nsites_10/cfg7_steps5 \
+  --nsites 10 \
+  --levels 1 2 5 10
+```
+
+After external VASP single-point calculations complete, analyze returned VASP
+outputs:
+
+```bash
+python scripts/cluster_vasp/analyze_fair_vasp.py \
+  --vasp-dir vasp_fair_all2d/vasp_fair_work/vasp_fair \
+  --stats vasp_fair_all2d/generation_stats.json \
+  --nsites 10
 ```
 
 VASP itself, pseudopotentials, scheduler files, and cluster-specific launch

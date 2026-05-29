@@ -5,7 +5,7 @@ NO3RR heuristic baseline (ablation): skip Flow model entirely.
 Pipeline: alloy bulk → slab(100) → heuristic placement → GemNet-OC relaxation → ΔE
 
 Usage:
-    python scripts/run_no3rr_heuristic.py \
+    python scripts/case_studies/run_no3rr_heuristic.py \
         --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --output-dir examples/NO3RR/data_heuristic \
         --device cuda:0
@@ -24,7 +24,7 @@ import pandas as pd
 import ase.io
 from ase.optimize import BFGS
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adsorbdiff.placement import (
     Adsorbate,
     AdsorbateSlabConfig,
@@ -64,13 +64,13 @@ def main():
     parser.add_argument("--miller", type=int, nargs=3, default=[1, 0, 0])
     args = parser.parse_args()
 
-    main_path = str(Path(__file__).resolve().parent.parent.parent)
+    main_path = str(Path(__file__).resolve().parents[2])
     db_path = os.path.join(main_path, "adsorbdiff/placement/pkls/adsorbates.pkl")
     bulks_path = os.path.join(main_path, "examples/NO3RR/NO3RR_bulks.pkl")
     miller = tuple(args.miller)
 
     if not os.path.exists(bulks_path):
-        print("ERROR: Run 'python scripts/prepare_no3rr_data.py' first.")
+        print("ERROR: Run 'python scripts/case_studies/prepare_no3rr_data.py' first.")
         sys.exit(1)
 
     with open(bulks_path, "rb") as f:

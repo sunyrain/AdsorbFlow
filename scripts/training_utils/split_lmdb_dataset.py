@@ -2,7 +2,7 @@
 """Utility to split an LMDB dataset into train and validation subsets."""
 
 # Usage example:
-#   python scripts/split_lmdb_dataset.py train_allE train_split val_split --train-ratio 0.9 --seed 42
+#   python scripts/training_utils/split_lmdb_dataset.py train_allE train_split val_split --train-ratio 0.9 --seed 42
 
 from __future__ import annotations
 

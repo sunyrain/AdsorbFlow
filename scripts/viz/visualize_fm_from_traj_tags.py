@@ -225,9 +225,9 @@ def parse_sid_from_fname(fname: str) -> str:
 # -----------------------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--traj", default="71_7114_7_heur18.traj")
-    ap.add_argument("--ckpt", default="checkpoints/2025-09-27-08-53-20/checkpoint.pt")
-    ap.add_argument('--tags-pkl', default="oc20dense_tags.pkl")
+    ap.add_argument("--traj", required=True, help="Input trajectory with initial and final frames.")
+    ap.add_argument("--ckpt", required=True, help="AdsorbFlow checkpoint path.")
+    ap.add_argument('--tags-pkl', default="oc20_dense_mappings/oc20dense_tags.pkl")
     ap.add_argument('--steps', type=int, default=5)
     ap.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu')
     ap.add_argument('--seed', type=int, default=0)

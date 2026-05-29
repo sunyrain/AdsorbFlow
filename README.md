@@ -26,11 +26,11 @@ DFT-oriented analysis scripts.
 
 | File | Purpose |
 |---|---|
-| `DATA.md` | Dataset, checkpoint, and artifact placement |
-| `REPRODUCIBILITY.md` | End-to-end reproduction workflow |
-| `MODEL_CARD.md` | Intended use, limitations, and evaluation scope |
-| `PAPER_RESULTS.md` | Manuscript result tables and audit notes |
-| `EXPERIMENT_COMMANDS.md` | Public command templates |
+| `docs/DATA.md` | Dataset, checkpoint, and artifact placement |
+| `docs/REPRODUCIBILITY.md` | End-to-end reproduction workflow |
+| `docs/MODEL_CARD.md` | Intended use, limitations, and evaluation scope |
+| `docs/PAPER_RESULTS.md` | Manuscript result tables and audit notes |
+| `docs/COMMANDS.md` | Public command templates |
 | `docs/REPOSITORY_STRUCTURE.md` | Directory-level repository map |
 | `SECURITY.md` | What must not be committed to the public repository |
 
@@ -190,7 +190,7 @@ guidance through `cfg_scale` and short ODE integration through `num_steps`.
 For MLFF-level hyperparameter sweeps:
 
 ```bash
-python -u scripts/grid_search_cfg_flow.py \
+python -u scripts/evaluation/grid_search_cfg_flow.py \
   --cfg-scales 0 1 3 5 7 10 \
   --num-steps 5 10 30 \
   --flow-checkpoint checkpoints/{adsorbflow_checkpoint}.pt \
@@ -206,8 +206,8 @@ Switch `--model-type painn` for the PaiNN backbone.
 
 ## DFT-Oriented Verification
 
-The scripts under `scripts/cluster_vasp/` and `scripts/run_vasp_dft/` support
-the paper-style DFT workflow:
+The scripts under `scripts/cluster_vasp/` support the paper-style DFT
+preparation and analysis workflow:
 
 | Script | Use |
 |---|---|
@@ -215,10 +215,11 @@ the paper-style DFT workflow:
 | `scripts/cluster_vasp/paper_faithful_sr.py` | compute paper-style SR@k from VASP results |
 | `scripts/cluster_vasp/compute_fair_sr.py` | analyze per-seed and fair union success rates |
 | `scripts/cluster_vasp/analyze_fair_vasp.py` | summarize VASP verification outputs |
-| `scripts/eval.py` | MLFF-level success and anomaly evaluation |
+| `scripts/evaluation/eval.py` | MLFF-level success and anomaly evaluation |
 
-These scripts assume that VASP input/output paths and pseudopotential paths are
-configured for the local cluster environment.
+The repository prepares VASP inputs and analyzes completed VASP outputs. Actual
+VASP execution is cluster-specific and should be launched with the local
+scheduler or site-approved VASP wrapper.
 
 Before using VASP input-generation scripts, configure the required local
 environment explicitly:
@@ -243,13 +244,17 @@ configs/
   relaxation/gemnet_oc/     GemNet-OC relaxation config and scale file
 scripts/
   create_lmdbs/             OC20-Dense preprocessing utilities
+  evaluation/               MLFF evaluation and grid-search runners
+  case_studies/             CO2RR, NO3RR, OER, and NRR case-study runners
   cluster_vasp/             DFT input generation and SR analysis
-  run_vasp_dft/             VASP execution helpers
-  grid_search_cfg_flow.py   MLFF grid search over guidance and step count
-PAPER_RESULTS.md            detailed experimental notes and result tables
-EXPERIMENT_COMMANDS.md      reproducible command templates
-DATA.md                     data and checkpoint placement guide
-REPRODUCIBILITY.md          end-to-end reproduction notes
+  training_utils/           dataset splitting and metadata utilities
+  viz/                      figure and trajectory visualization scripts
+docs/
+  COMMANDS.md               reproducible command templates
+  DATA.md                   data and checkpoint placement guide
+  MODEL_CARD.md             intended use, limitations, and evaluation scope
+  PAPER_RESULTS.md          detailed experimental notes and result tables
+  REPRODUCIBILITY.md        end-to-end reproduction notes
 ```
 
 ## Notes On Scope

@@ -12,8 +12,8 @@ NO3RR pathway (all Flow-ID):
   *NO3 → *NO2 → *NO → *N → *NH → *NH3
 
 Usage:
-    python scripts/run_no3rr_flow.py \
-        --flow-ckpt checkpoints/2026-04-18-11-41-52-eqv2_fourier_cosine/best_checkpoint.pt \
+    python scripts/case_studies/run_no3rr_flow.py \
+        --flow-ckpt checkpoints/{adsorbflow_checkpoint}.pt \
         --flow-config configs/flow/eqv2_fourier_cosine.yml \
         --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --cfg-scale 7 --num-steps 5 \
@@ -36,7 +36,7 @@ import torch
 import ase.io
 from ase.optimize import BFGS
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adsorbdiff.placement import (
     Adsorbate,
     AdsorbateSlabConfig,
@@ -178,13 +178,13 @@ def main():
     parser.add_argument("--miller", type=int, nargs=3, default=[1, 0, 0])
     args = parser.parse_args()
 
-    main_path = str(Path(__file__).resolve().parent.parent.parent)
+    main_path = str(Path(__file__).resolve().parents[2])
     db_path = os.path.join(main_path, "adsorbdiff/placement/pkls/adsorbates.pkl")
     bulks_path = os.path.join(main_path, "examples/NO3RR/NO3RR_bulks.pkl")
     miller = tuple(args.miller)
 
     if not os.path.exists(bulks_path):
-        print("ERROR: Run 'python scripts/prepare_no3rr_data.py' first.")
+        print("ERROR: Run 'python scripts/case_studies/prepare_no3rr_data.py' first.")
         sys.exit(1)
 
     a2g = AtomsToGraphs(

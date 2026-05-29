@@ -36,7 +36,7 @@ flow training is available at:
 configs/flow/eqv2_fourier_cosine_v2.yml
 ```
 
-Command templates are provided in `EXPERIMENT_COMMANDS.md`.
+Command templates are provided in `COMMANDS.md`.
 
 ## 4. Generate And Relax Candidates
 
@@ -44,7 +44,7 @@ Run the grid-search script to generate candidates, relax them with GemNet-OC,
 and evaluate MLFF-level success and anomaly rates:
 
 ```bash
-python -u scripts/grid_search_cfg_flow.py \
+python -u scripts/evaluation/grid_search_cfg_flow.py \
   --cfg-scales 0 1 3 5 7 10 \
   --num-steps 5 10 30 \
   --flow-checkpoint checkpoints/{adsorbflow_checkpoint}.pt \

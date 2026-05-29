@@ -7,7 +7,7 @@ Usage:
     # OER volcano
     python scripts/evaluation/casestudy_grid_search.py \
         --study oer \
-        --flow-ckpt checkpoints/.../best_checkpoint.pt \
+        --flow-ckpt checkpoints/{adsorbflow_checkpoint}.pt \
         --flow-config configs/flow/eqv2_fourier_cosine.yml \
         --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --cfg-scales 3 5 7 --num-steps-list 5 10 \
@@ -17,7 +17,7 @@ Usage:
     # CO₂RR screening
     python scripts/evaluation/casestudy_grid_search.py \
         --study co2rr \
-        --flow-ckpt checkpoints/.../best_checkpoint.pt \
+        --flow-ckpt checkpoints/{adsorbflow_checkpoint}.pt \
         --flow-config configs/flow/eqv2_fourier_cosine.yml \
         --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --cfg-scales 3 5 7 --num-steps-list 5 10 \
@@ -158,7 +158,7 @@ def main():
     parser.add_argument("--skip-existing", action="store_true")
     args = parser.parse_args()
 
-    main_path = str(Path(__file__).resolve().parent.parent)
+    main_path = str(Path(__file__).resolve().parents[2])
     if args.study == "oer":
         lit_path = os.path.join(main_path, "examples/OER/literature_data.pkl")
     else:

@@ -5,7 +5,7 @@ Adapted from examples/NRR/NRR_example-gemnet.ipynb.
 
 Usage:
     python scripts/case_studies/run_nrr_flow.py \
-        --flow-ckpt checkpoints/.../best_checkpoint.pt \
+        --flow-ckpt checkpoints/{adsorbflow_checkpoint}.pt \
         --flow-config configs/flow/eqv2_conditional_flow.yml \
         --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --cfg-scale 7 --num-steps 5 \
@@ -27,7 +27,7 @@ import ase.io
 from ase.optimize import BFGS
 
 # AdsorbDiff imports
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adsorbdiff.placement import (
     Adsorbate,
     AdsorbateSlabConfig,
@@ -172,7 +172,7 @@ def main():
     parser.add_argument("--max-bulks", type=int, default=None, help="Limit number of bulks to process")
     args = parser.parse_args()
 
-    main_path = str(Path(__file__).resolve().parent.parent.parent)
+    main_path = str(Path(__file__).resolve().parents[2])
     db_path = os.path.join(main_path, "adsorbdiff/placement/pkls/adsorbates.pkl")
     bulks_path = os.path.join(main_path, "examples/NRR/NRR_example_bulks.pkl")
 

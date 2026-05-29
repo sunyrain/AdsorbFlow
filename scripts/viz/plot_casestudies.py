@@ -18,7 +18,7 @@ Produces:
     co2rr_classification.pdf — pairwise ordering + classification table
 
 Usage:
-    python scripts/plot_casestudies.py \
+    python scripts/viz/plot_casestudies.py \
         --oer-dir examples/OER/data_flow_runB \
         --co2rr-dir examples/CO2RR/data_flow_runB \
         --output-dir figures/casestudies
@@ -676,7 +676,7 @@ def main():
     parser.add_argument("--output-dir", default="figures/casestudies")
     args = parser.parse_args()
 
-    main_path = str(Path(__file__).resolve().parent.parent)
+    main_path = str(Path(__file__).resolve().parents[2])
     os.makedirs(args.output_dir, exist_ok=True)
 
     all_metrics = {}

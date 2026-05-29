@@ -5,7 +5,7 @@ Runs run_nrr_flow.py for each combo and collects results.
 
 Usage:
     python scripts/evaluation/nrr_grid_search.py \
-        --flow-ckpt checkpoints/.../best_checkpoint.pt \
+        --flow-ckpt checkpoints/{adsorbflow_checkpoint}.pt \
         --flow-config configs/flow/xxx.yml \
         --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --cfg-scales 0 3 5 7 --num-steps-list 5 10 \
@@ -105,7 +105,7 @@ def main():
     parser.add_argument("--device", default="cuda:0")
     args = parser.parse_args()
 
-    main_path = str(Path(__file__).resolve().parent.parent)
+    main_path = str(Path(__file__).resolve().parents[2])
     lit_path = os.path.join(main_path, "examples/NRR/literature_data.pkl")
 
     all_results = []

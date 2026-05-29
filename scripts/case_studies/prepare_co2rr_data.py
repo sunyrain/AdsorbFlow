@@ -21,7 +21,7 @@ Adsorbates needed:
   - *OCHO (formate pathway)
 
 Usage:
-    python scripts/prepare_co2rr_data.py
+    python scripts/case_studies/prepare_co2rr_data.py
 """
 
 import os
@@ -89,7 +89,7 @@ METAL_MPID = {
 
 
 def main():
-    main_path = str(Path(__file__).resolve().parent.parent)
+    main_path = str(Path(__file__).resolve().parents[2])
     bulk_db_path = os.path.join(main_path, "adsorbdiff/placement/pkls/bulks.pkl")
     out_dir = os.path.join(main_path, "examples/CO2RR")
     os.makedirs(out_dir, exist_ok=True)

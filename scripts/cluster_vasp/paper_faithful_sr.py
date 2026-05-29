@@ -7,7 +7,7 @@
     1) 从 seeds 0..k-1 中，找 MLFF 能量最低的非异常结构
     2) 检查该结构的 DFT 结果是否 ≤ target + 0.1 eV
     3) SR@k = 成功 SID 数 / 44
-  → 这与 AdsorbDiff 原始代码(write_vasp_inputs_nsite.py)一致
+  → This matches the original AdsorbDiff DFT selection protocol.
   → 每个 SID 只依赖 1 个 DFT 结果（MLFF-best 的那个）
 
 方法 B (DFT 并集 / DFT-union):

@@ -2,14 +2,14 @@
 """Grid search over cfg_scale and num_steps for Flow Matching relaxations.
 
 This script runs the sampling + relaxation pipeline for each parameter pair,
-then evaluates success rate with the logic provided in scripts.eval.
+then evaluates success rate with the logic provided in scripts/evaluation/eval.py.
 """
 
 # Example (single checkpoint):
-# python scripts/grid_search_cfg_flow.py --cfg-scales 1.0 1.5 --num-steps 40 60 \
+# python scripts/evaluation/grid_search_cfg_flow.py --cfg-scales 1.0 1.5 --num-steps 40 60 \
 #     --flow-checkpoint checkpoints/flow/model.ckpt --relax-checkpoint checkpoints/relax/model.ckpt
 # Example (directory of checkpoints):
-# python scripts/grid_search_cfg_flow.py --cfg-scales 1.0 --num-steps 40 \
+# python scripts/evaluation/grid_search_cfg_flow.py --cfg-scales 1.0 --num-steps 40 \
 #     --flow-checkpoint checkpoints/flow_dir --relax-checkpoint checkpoints/relax/model.ckpt
 
 import argparse

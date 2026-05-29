@@ -10,7 +10,7 @@ Also computes bare slab energy for adsorption energy calculation.
 
 Usage:
     python scripts/case_studies/run_oer_flow.py \
-        --flow-ckpt checkpoints/.../best_checkpoint.pt \
+        --flow-ckpt checkpoints/{adsorbflow_checkpoint}.pt \
         --flow-config configs/flow/eqv2_fourier_cosine.yml \
         --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --cfg-scale 7 --num-steps 5 \
@@ -34,7 +34,7 @@ import torch
 import ase.io
 from ase.optimize import BFGS
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from adsorbdiff.placement import (
     Adsorbate,
     AdsorbateSlabConfig,
@@ -176,13 +176,13 @@ def main():
     parser.add_argument("--miller", type=int, nargs=3, default=[1, 1, 1])
     args = parser.parse_args()
 
-    main_path = str(Path(__file__).resolve().parent.parent.parent)
+    main_path = str(Path(__file__).resolve().parents[2])
     db_path = os.path.join(main_path, "adsorbdiff/placement/pkls/adsorbates.pkl")
     bulks_path = os.path.join(main_path, "examples/OER/OER_bulks.pkl")
     miller = tuple(args.miller)
 
     if not os.path.exists(bulks_path):
-        print("ERROR: Run 'python scripts/prepare_oer_data.py' first to generate bulk data.")
+        print("ERROR: Run 'python scripts/case_studies/prepare_oer_data.py' first to generate bulk data.")
         sys.exit(1)
 
     a2g = AtomsToGraphs(
