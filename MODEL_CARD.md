@@ -58,6 +58,9 @@ calculations.
   claims.
 - Scripts that prepare or analyze VASP calculations require local configuration
   of VASP, pseudopotentials, and scheduler/runtime paths.
+- Open Catalyst data and code dependencies are external resources; this
+  repository does not redistribute OC20-Dense raw data, VASP pseudopotentials,
+  or full relaxation checkpoints.
 
 ## Ethical And Scientific Use
 

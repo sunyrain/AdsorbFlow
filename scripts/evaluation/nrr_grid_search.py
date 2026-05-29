@@ -4,10 +4,10 @@ NRR grid search: test multiple cfg_scale × num_steps combinations.
 Runs run_nrr_flow.py for each combo and collects results.
 
 Usage:
-    python scripts/nrr_grid_search.py \
+    python scripts/evaluation/nrr_grid_search.py \
         --flow-ckpt checkpoints/.../best_checkpoint.pt \
         --flow-config configs/flow/xxx.yml \
-        --relax-ckpt configs/relaxation/gemnet_oc/gemnet_oc_base_s2ef_2M.pt \
+        --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --cfg-scales 0 3 5 7 --num-steps-list 5 10 \
         --output-base examples/NRR/grid_runB \
         --device cuda:0
@@ -30,7 +30,7 @@ from scipy import stats
 def run_nrr(flow_ckpt, flow_config, relax_ckpt, cfg_scale, num_steps, output_dir, device):
     """Run a single NRR evaluation."""
     cmd = [
-        sys.executable, "-u", "scripts/run_nrr_flow.py",
+        sys.executable, "-u", "scripts/case_studies/run_nrr_flow.py",
         "--flow-ckpt", flow_ckpt,
         "--flow-config", flow_config,
         "--relax-ckpt", relax_ckpt,

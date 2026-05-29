@@ -21,6 +21,8 @@ Required local inputs for full reproduction:
 - OC20-Dense tags and reference-energy mappings.
 - AdsorbFlow generator checkpoints or compute resources for retraining.
 - GemNet-OC relaxer checkpoint.
+- GemNet-OC scale factors, already tracked in
+  `configs/relaxation/gemnet_oc/gemnet-oc.pt`.
 
 ## 3. Train Or Load AdsorbFlow
 
@@ -46,7 +48,7 @@ python -u scripts/grid_search_cfg_flow.py \
   --cfg-scales 0 1 3 5 7 10 \
   --num-steps 5 10 30 \
   --flow-checkpoint checkpoints/{adsorbflow_checkpoint}.pt \
-  --relax-checkpoint configs/relaxation/gemnet_oc/gemnet-oc.pt \
+  --relax-checkpoint checkpoints/{gemnet_oc_checkpoint}.pt \
   --model-type eqv2 \
   --nsites 10 \
   --gpus 4 \
@@ -63,7 +65,9 @@ VASP single-point input folders, run VASP externally, and analyze completed
 outputs.
 
 The repository does not distribute VASP, pseudopotentials, or cluster launch
-scripts. Configure these locally.
+scripts. Configure these locally by setting `VASP_PP_PATH`. If `ocdata` is not
+installed as a package, set `ADSORBFLOW_OCP_PATH` to an external
+Open-Catalyst-Dataset checkout before running VASP input-generation scripts.
 
 ## 6. Regenerate Figures
 

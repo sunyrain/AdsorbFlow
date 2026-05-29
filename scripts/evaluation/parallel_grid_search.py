@@ -7,9 +7,9 @@ Across N GPUs, up to N jobs run in parallel. After all seeds for a combo
 finish, aggregates into the same jsonl schema as grid_search_cfg_flow.py.
 
 Example:
-  python scripts/parallel_grid_search.py \
+  python scripts/evaluation/parallel_grid_search.py \
     --flow-checkpoints checkpoints/eval_candidates/ep183.pt \
-    --relax-checkpoint configs/relaxation/gemnet_oc/gemnet_oc_base_s2ef_2M.pt \
+    --relax-checkpoint checkpoints/gemnet_oc_base_s2ef_2M.pt \
     --model-type eqv2 \
     --relax-dataset val_nonrelaxed_update \
     --cfg-scales 3 5 7 10 \
@@ -35,7 +35,7 @@ from pathlib import Path
 from statistics import mean
 from typing import Dict, List, Optional, Tuple, Set
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 

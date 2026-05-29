@@ -34,5 +34,5 @@ paper_artifacts/
   grid_search_results/      compact JSONL summaries for MLFF grid searches
 ```
 
-Large checkpoints, LMDB datasets, VASP outputs, and trajectories are not
-tracked in Git. See `DATA.md`.
+Large checkpoints, LMDB datasets, VASP outputs, trajectories, and external
+Open-Catalyst-Dataset checkouts are not tracked in Git. See `DATA.md`.

@@ -22,9 +22,15 @@ from tqdm import tqdm
 
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, _PROJECT_ROOT)
-sys.path.append(os.path.join(_PROJECT_ROOT, "Open-Catalyst-Dataset"))
+_OCP_PATH = os.environ.get("ADSORBFLOW_OCP_PATH")
+if _OCP_PATH:
+    sys.path.append(os.path.abspath(_OCP_PATH))
 
-os.environ.setdefault("VASP_PP_PATH", os.path.join(_PROJECT_ROOT, "potpaw_PBE_54"))
+if not os.environ.get("VASP_PP_PATH"):
+    raise RuntimeError(
+        "Set VASP_PP_PATH to your local VASP pseudopotential directory before "
+        "generating VASP inputs."
+    )
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
 from ocdata.utils.vasp import write_vasp_input_files

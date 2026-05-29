@@ -6,7 +6,7 @@ Pipeline: alloy bulk → slab(100) → heuristic placement → GemNet-OC relaxat
 
 Usage:
     python scripts/run_no3rr_heuristic.py \
-        --relax-ckpt configs/relaxation/gemnet_oc/gemnet_oc_base_s2ef_2M.pt \
+        --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --output-dir examples/NO3RR/data_heuristic \
         --device cuda:0
 """

@@ -29,6 +29,7 @@ ENV/
 htmlcov/
 .hypothesis/
 .ipynb_checkpoints/
+scripts/*.ipynb
 .pytest_cache/
 .tox/
 coverage.xml
@@ -73,7 +74,7 @@ valood50_R1I0.1/
 *.pkl
 *.pt
 
-# Allow small legacy helper assets that are already part of the source release.
+# Allow source-release helper assets that are intentionally tracked.
 !adsorbdiff/models/equiformer_v2/Jd.pt
 !adsorbdiff/placement/pkls/adsorbates.pkl
 !adsorbdiff/placement/pkls/bulks.pkl

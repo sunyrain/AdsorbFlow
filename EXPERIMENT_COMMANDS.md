@@ -2,8 +2,9 @@
 
 This file records public, path-agnostic command templates for reproducing the
 main AdsorbFlow workflow. Replace placeholder paths such as
-`/path/to/AdsorbFlow` and `checkpoints/{adsorbflow_checkpoint}.pt` with local
-paths on your workstation or cluster.
+`/path/to/AdsorbFlow`, `checkpoints/{adsorbflow_checkpoint}.pt`, and
+`checkpoints/{gemnet_oc_checkpoint}.pt` with local paths on your workstation or
+cluster.
 
 For a higher-level workflow description, see `REPRODUCIBILITY.md`.
 
@@ -69,7 +70,7 @@ python -u scripts/grid_search_cfg_flow.py \
   --cfg-scales 0 1 3 5 7 10 \
   --num-steps 5 10 30 \
   --flow-checkpoint checkpoints/{adsorbflow_checkpoint}.pt \
-  --relax-checkpoint configs/relaxation/gemnet_oc/gemnet-oc.pt \
+  --relax-checkpoint checkpoints/{gemnet_oc_checkpoint}.pt \
   --model-type eqv2 \
   --nsites 10 \
   --gpus 4 \
@@ -100,4 +101,6 @@ python scripts/cluster_vasp/paper_faithful_sr.py \
 ```
 
 VASP itself, pseudopotentials, scheduler files, and cluster-specific launch
-commands are not distributed in this repository.
+commands are not distributed in this repository. Set `VASP_PP_PATH` before
+generating VASP inputs. If `ocdata` is not installed, also set
+`ADSORBFLOW_OCP_PATH=/path/to/Open-Catalyst-Dataset`.

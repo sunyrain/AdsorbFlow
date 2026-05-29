@@ -4,9 +4,9 @@
 This avoids the ~7 min model loading overhead per site in grid_search_cfg_flow.py.
 Usage (with DDP):
     python -u -m torch.distributed.launch --nproc_per_node=4 --master_port=29500 \
-        scripts/batch_relax.py \
+        scripts/evaluation/batch_relax.py \
         --relax-config configs/relaxation/gemnet_oc/gemnet_relax.yml \
-        --checkpoint configs/relaxation/gemnet_oc/gemnet_oc_base_s2ef_2M.pt \
+        --checkpoint checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --tasks tasks.json
 
 tasks.json format:
@@ -24,7 +24,7 @@ from pathlib import Path
 
 import torch
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 

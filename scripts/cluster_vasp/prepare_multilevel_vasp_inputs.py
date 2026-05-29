@@ -26,11 +26,17 @@ import numpy as np
 from tqdm import tqdm
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-os.environ.setdefault("VASP_PP_PATH", os.path.join(PROJECT_ROOT, "potpaw_PBE_54"))
 
 import sys
 sys.path.insert(0, PROJECT_ROOT)
-sys.path.append(os.path.join(PROJECT_ROOT, "Open-Catalyst-Dataset"))
+OCP_PATH = os.environ.get("ADSORBFLOW_OCP_PATH")
+if OCP_PATH:
+    sys.path.append(os.path.abspath(OCP_PATH))
+if not os.environ.get("VASP_PP_PATH"):
+    raise RuntimeError(
+        "Set VASP_PP_PATH to your local VASP pseudopotential directory before "
+        "generating VASP inputs."
+    )
 
 from ocdata.utils.vasp import write_vasp_input_files
 from adsorbdiff.placement.flag_anomaly import DetectTrajAnomaly

@@ -1,11 +1,10 @@
 trainer: adsorbdiff.trainers.meanflow_trainer.MeanFlowTrainer
 
 dataset:
-  - src: is2res_train_val_test_lmdbs/data/is2re/all/train
-  #- src: train_split
-  #- src: train_split
+  - src: train_split
     normalize_labels: False
-  - src: is2res_train_val_test_lmdbs/data/is2re/all/val_id/data.lmdb
+  - src: val_split
+    normalize_labels: False
 
 logger:
   name: wandb
@@ -57,7 +56,7 @@ optim:
   optimizer_params:
     weight_decay: 0.001
   scheduler: CosineAnnealingLR
-  T_max: 100        # 一个周期的 epoch 数
+  T_max: 100
   eta_min: 0.000001
 
   patience: 3
@@ -71,8 +70,8 @@ optim:
 
 
   flow:
-    type: fm                  # ← 关键：FM
-    path: rectified           # 先用直线/测地插值
-    time_sampl: uniform       # 或 cosine
-    tr_sigma: 2.0             # XY 噪声尺度（按数据再调）
-    rot_sigma: 1.0            # 轴角噪声尺度（弧度）
+    type: fm
+    path: rectified
+    time_sampl: uniform
+    tr_sigma: 2.0
+    rot_sigma: 1.0

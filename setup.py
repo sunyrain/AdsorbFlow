@@ -5,8 +5,8 @@ setup(
     name="adsorbflow",
     version="0.1.0",
     description=(
-        "Energy-conditioned flow matching for fast adsorbate placement on "
-        "catalytic surfaces"
+        "Energy-conditioned deterministic transport for fast adsorbate "
+        "placement on catalytic surfaces"
     ),
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

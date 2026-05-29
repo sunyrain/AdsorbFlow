@@ -131,14 +131,22 @@ Use the following map to assemble a reproducible workspace:
 | validation ID LMDB | 44-system ID evaluation | `val_nonrelaxed_update/` |
 | validation OOD LMDB | 50-system OOD evaluation | `valood50_R1I0.1/` |
 | AdsorbFlow checkpoints | pretrained EqV2 and PaiNN generators | `checkpoints/` |
-| GemNet-OC relaxer | MLFF relaxation and ranking | `configs/relaxation/gemnet_oc/gemnet-oc.pt` |
+| GemNet-OC relaxer checkpoint | MLFF relaxation and ranking | `checkpoints/{gemnet_oc_checkpoint}.pt` |
+| GemNet-OC scale file | scale factors used by the relaxation config | `configs/relaxation/gemnet_oc/gemnet-oc.pt` |
 | grid-search and DFT artifacts | reported evaluation outputs | `grid_search_runs/`, `grid_search_runs_ood/`, VASP result folders |
 
 Public OC20 and OC20-Dense data should be downloaded from the original Open
 Catalyst and OC20-Dense distribution links. If using the compact artifacts from
 this project, unpack them into the paths above before running the commands
-below. The tracked file `configs/relaxation/gemnet_oc/gemnet-oc.pt` provides the
-GemNet-OC relaxation checkpoint used by the repository scripts.
+below. The tracked file `configs/relaxation/gemnet_oc/gemnet-oc.pt` is a
+GemNet-OC scale-factor file, not a full neural-network checkpoint. Place the
+GemNet-OC relaxation checkpoint under `checkpoints/` and pass it with
+`--relax-checkpoint`.
+
+The repository does not track the Open-Catalyst-Dataset source tree as a
+submodule. VASP input-generation utilities require either an installed
+`ocdata` package or an external Open-Catalyst-Dataset checkout exposed through
+`ADSORBFLOW_OCP_PATH`.
 
 ## Training
 
@@ -186,7 +194,7 @@ python -u scripts/grid_search_cfg_flow.py \
   --cfg-scales 0 1 3 5 7 10 \
   --num-steps 5 10 30 \
   --flow-checkpoint checkpoints/{adsorbflow_checkpoint}.pt \
-  --relax-checkpoint configs/relaxation/gemnet_oc/gemnet-oc.pt \
+  --relax-checkpoint checkpoints/{gemnet_oc_checkpoint}.pt \
   --model-type eqv2 \
   --nsites 10 \
   --gpus 4 \
@@ -212,6 +220,14 @@ the paper-style DFT workflow:
 These scripts assume that VASP input/output paths and pseudopotential paths are
 configured for the local cluster environment.
 
+Before using VASP input-generation scripts, configure the required local
+environment explicitly:
+
+```bash
+export VASP_PP_PATH=/path/to/vasp/pseudopotentials
+export ADSORBFLOW_OCP_PATH=/path/to/Open-Catalyst-Dataset  # optional if ocdata is installed
+```
+
 ## Repository Layout
 
 ```text
@@ -224,7 +240,7 @@ adsorbdiff/
 configs/
   flow/                     AdsorbFlow training configs
   denoising/                inherited AdsorbDiff configs
-  relaxation/gemnet_oc/     GemNet-OC relaxation config and checkpoint
+  relaxation/gemnet_oc/     GemNet-OC relaxation config and scale file
 scripts/
   create_lmdbs/             OC20-Dense preprocessing utilities
   cluster_vasp/             DFT input generation and SR analysis
@@ -246,8 +262,8 @@ process-screening workflows.
 
 ## Citation
 
-If you use this repository, please cite the AdsorbFlow arXiv preprint and the
-upstream projects listed below.
+If you use this repository, please cite the AdsorbFlow arXiv preprint until the
+journal version is available, and also cite the upstream projects listed below.
 
 ```bibtex
 @misc{qiu2026adsorbflow,

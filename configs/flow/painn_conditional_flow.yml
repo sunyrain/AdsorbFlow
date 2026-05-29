@@ -73,25 +73,25 @@ optim:
   ema_decay: 0.999
   loss_energy: mae
   loss_force: l2mae
-  p_cfg: 0.25        # ← 关键：cfg 强度
+  p_cfg: 0.25
 
-  checkpoint_every_epoch: 50   # 每 20 个 epoch 存一次 epoch_XXX.pt
-  checkpoint_every: -1        # 禁用基于 step 的频繁保存 (checkpoint.pt 会在每个 epoch 结束时自动更新)
+  checkpoint_every_epoch: 50
+  checkpoint_every: -1
 
   flow:
     nan_weight_debug: false
-    type: fm                  # ← 关键：FM
-    fm_regression: velocity # 或 clean_endpoint / delta_clean
-    path: rectified           # 先用直线/测地插值
-    time_sampl: uniform       # 或 cosine
-    tr_sigma: 3         # XY 噪声尺度（按数据再调）
-    allow_z: True    # 是否允许 Z 方向平移
-    tr_sigma_z_scale: 0.3 # Z 轴噪声缩放因子 (1.0 = 与 XY 各向同性)
-    rot_sigma: 1           # 轴角噪声尺度（弧度）
+    type: fm
+    fm_regression: velocity
+    path: rectified
+    time_sampl: uniform
+    tr_sigma: 3
+    allow_z: True
+    tr_sigma_z_scale: 0.3
+    rot_sigma: 1
     tr_clip: 20               # Translation clip
     rot_clip: 5               # Rotation clip
     grad_norm_guard: 5000000  # Gradient norm guard
-    write_every: 10           # 每隔多少个 epoch 写一次 traj
+    write_every: 10
     output_clip:
       translation: 40
       rotation: 10

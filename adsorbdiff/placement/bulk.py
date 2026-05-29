@@ -8,7 +8,7 @@ import numpy as np
 
 from adsorbdiff.placement.slab import Slab
 
-BULK_PKL_PATH = "adsorbdiff/placement/pkls/bulk.pkl"
+BULK_PKL_PATH = "adsorbdiff/placement/pkls/bulks.pkl"
 
 
 class Bulk:

@@ -5,7 +5,7 @@ import warnings
 import ase
 import numpy as np
 
-ADSORBATES_PKL_PATH = "adsorbdiff/placement/pkls/bulks.pkl"
+ADSORBATES_PKL_PATH = "adsorbdiff/placement/pkls/adsorbates.pkl"
 
 
 class Adsorbate:

@@ -10,7 +10,7 @@ This isolates the contribution of the Flow model by comparing:
 
 Usage:
     python scripts/run_oer_heuristic.py \
-        --relax-ckpt configs/relaxation/gemnet_oc/gemnet_oc_base_s2ef_2M.pt \
+        --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --output-dir examples/OER/data_heuristic \
         --device cuda:0
 """

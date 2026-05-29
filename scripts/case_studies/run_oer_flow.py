@@ -9,10 +9,10 @@ Pipeline: bulk → slab(111) → flow placement → GemNet-OC relaxation → ΔE
 Also computes bare slab energy for adsorption energy calculation.
 
 Usage:
-    python scripts/run_oer_flow.py \
+    python scripts/case_studies/run_oer_flow.py \
         --flow-ckpt checkpoints/.../best_checkpoint.pt \
         --flow-config configs/flow/eqv2_fourier_cosine.yml \
-        --relax-ckpt configs/relaxation/gemnet_oc/gemnet_oc_base_s2ef_2M.pt \
+        --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --cfg-scale 7 --num-steps 5 \
         --output-dir examples/OER/data_flow \
         --device cuda:0

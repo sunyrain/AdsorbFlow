@@ -5,21 +5,21 @@ Runs multiple cfg_scale × num_steps combos and collects results.
 
 Usage:
     # OER volcano
-    python scripts/casestudy_grid_search.py \
+    python scripts/evaluation/casestudy_grid_search.py \
         --study oer \
         --flow-ckpt checkpoints/.../best_checkpoint.pt \
         --flow-config configs/flow/eqv2_fourier_cosine.yml \
-        --relax-ckpt configs/relaxation/gemnet_oc/gemnet_oc_base_s2ef_2M.pt \
+        --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --cfg-scales 3 5 7 --num-steps-list 5 10 \
         --output-base examples/OER/grid \
         --device cuda:0
 
     # CO₂RR screening
-    python scripts/casestudy_grid_search.py \
+    python scripts/evaluation/casestudy_grid_search.py \
         --study co2rr \
         --flow-ckpt checkpoints/.../best_checkpoint.pt \
         --flow-config configs/flow/eqv2_fourier_cosine.yml \
-        --relax-ckpt configs/relaxation/gemnet_oc/gemnet_oc_base_s2ef_2M.pt \
+        --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --cfg-scales 3 5 7 --num-steps-list 5 10 \
         --output-base examples/CO2RR/grid \
         --device cuda:0
@@ -40,9 +40,9 @@ import pandas as pd
 def run_study(study, flow_ckpt, flow_config, relax_ckpt, cfg_scale, num_steps, output_dir, device):
     """Run a single case study evaluation."""
     if study == "oer":
-        script = "scripts/run_oer_flow.py"
+        script = "scripts/case_studies/run_oer_flow.py"
     elif study == "co2rr":
-        script = "scripts/run_co2rr_flow.py"
+        script = "scripts/case_studies/run_co2rr_flow.py"
     else:
         raise ValueError(f"Unknown study: {study}")
 

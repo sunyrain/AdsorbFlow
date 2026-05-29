@@ -19,7 +19,7 @@ Phase C — Full 10-seed Evaluation:
 Total: ~237 jobs ÷ 4 GPU × ~8 min ≈ 8 hours
 
 Usage:
-  python scripts/overnight_experiment.py [--phases A B C] [--gpus 0 1 2 3]
+  python scripts/evaluation/overnight_experiment.py [--phases A B C] [--gpus 0 1 2 3]
 """
 
 import argparse
@@ -33,9 +33,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 CKPT_DIR = REPO_ROOT / "checkpoints" / "2026-04-16-12-43-44-z_0_2D_cfg_0.20_tr_3_lr2.0-4_eqv2_fulldata_valsplit"
-RELAX_CKPT = REPO_ROOT / "configs" / "relaxation" / "gemnet_oc" / "gemnet_oc_base_s2ef_2M.pt"
+RELAX_CKPT = REPO_ROOT / "checkpoints" / "gemnet_oc_base_s2ef_2M.pt"
 LOG_DIR = REPO_ROOT / "logs" / "eval"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -117,7 +117,7 @@ def run_parallel_grid(flow_ckpts: List[str], cfg_scales: List[float],
 
     cmd = [
         sys.executable, "-u",
-        str(REPO_ROOT / "scripts" / "parallel_grid_search.py"),
+        str(REPO_ROOT / "scripts" / "evaluation" / "parallel_grid_search.py"),
         "--flow-checkpoints", *flow_ckpts,
         "--relax-checkpoint", str(RELAX_CKPT),
         "--model-type", "eqv2",

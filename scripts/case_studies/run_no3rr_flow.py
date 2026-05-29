@@ -15,7 +15,7 @@ Usage:
     python scripts/run_no3rr_flow.py \
         --flow-ckpt checkpoints/2026-04-18-11-41-52-eqv2_fourier_cosine/best_checkpoint.pt \
         --flow-config configs/flow/eqv2_fourier_cosine.yml \
-        --relax-ckpt configs/relaxation/gemnet_oc/gemnet_oc_base_s2ef_2M.pt \
+        --relax-ckpt checkpoints/gemnet_oc_base_s2ef_2M.pt \
         --cfg-scale 7 --num-steps 5 \
         --output-dir examples/NO3RR/data_flow_runB \
         --device cuda:0

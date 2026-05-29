@@ -13,6 +13,7 @@ files, CSV summaries, figures, and JSONL result summaries are tracked in Git.
 | `figures/` | Publication figures generated from case-study and ablation outputs |
 | `paper_artifacts/grid_search_results/` | MLFF-level grid-search JSONL summaries |
 | `configs/` | Training, sampling, and relaxation configuration templates |
+| `configs/relaxation/gemnet_oc/gemnet-oc.pt` | GemNet-OC scale-factor file used by the relaxation config |
 | `scripts/` | Data preprocessing, sampling, evaluation, VASP preparation, and plotting utilities |
 
 ## Excluded From Git
@@ -23,7 +24,7 @@ license-restricted, generated, or machine-specific:
 - OC20-Dense raw files and mapping archives.
 - Processed LMDB datasets.
 - AdsorbFlow neural-network checkpoints.
-- Full GemNet-OC checkpoints when distributed outside this repository.
+- GemNet-OC neural-network checkpoints.
 - Generated trajectories, relaxation folders, grid-search runs, and VASP input
   or output folders.
 - Cluster job logs and scheduler files.
@@ -41,6 +42,7 @@ downloaded or generated:
 | ID evaluation LMDB | `val_nonrelaxed_update/` |
 | OOD evaluation LMDB | `valood50_R1I0.1/` |
 | AdsorbFlow checkpoints | `checkpoints/` |
+| GemNet-OC relaxer checkpoint | `checkpoints/{gemnet_oc_checkpoint}.pt` |
 | Generated MLFF grid searches | `grid_search_runs/`, `grid_search_runs_ood/` |
 
 Update `src`, `traj_dir`, and checkpoint fields in the YAML configs if your
@@ -65,8 +67,18 @@ checkpoints/{adsorbflow_checkpoint}.pt
 ```
 
 For MLFF relaxation, configure a GemNet-OC checkpoint in
-`configs/relaxation/gemnet_oc/gemnet_relax.yml`. VASP verification requires a
-separate licensed VASP installation and pseudopotential path.
+`configs/relaxation/gemnet_oc/gemnet_relax.yml` and pass the checkpoint path
+with `--relax-checkpoint`. The tracked `gemnet-oc.pt` file in that directory is
+only a scale-factor file. VASP verification requires a separate licensed VASP
+installation and pseudopotential path.
+
+VASP input-generation utilities that import `ocdata.utils.vasp` require either
+an installed `ocdata` package or an external Open-Catalyst-Dataset checkout:
+
+```bash
+export ADSORBFLOW_OCP_PATH=/path/to/Open-Catalyst-Dataset
+export VASP_PP_PATH=/path/to/vasp/pseudopotentials
+```
 
 ## Reproducibility Artifacts
 
